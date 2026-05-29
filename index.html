@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Benabella Realty CRM</title>
+    <link rel="icon" href="assets/benabella-logo.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Main navigation">
+        <div class="brand">
+          <img class="brand-logo" src="assets/benabella-logo.png" alt="Benabella Realty logo" />
+          <div>
+            <strong>Benabella Realty</strong>
+            <span>Luxury Moroccan Real Estate</span>
+          </div>
+        </div>
+        <nav class="nav-list">
+          <button class="nav-button active" data-page="today" type="button">Today</button>
+          <button class="nav-button" data-page="sync" type="button">Sync</button>
+          <button class="nav-button" data-page="assistant" type="button">AI Coach</button>
+          <button class="nav-button" data-page="leads" type="button">Leads</button>
+          <button class="nav-button" data-page="properties" type="button">Properties</button>
+          <button class="nav-button" data-page="social" type="button">Social</button>
+          <button class="nav-button" data-page="owners" type="button">Owners</button>
+          <button class="nav-button" data-page="visits" type="button">Visits</button>
+          <button class="nav-button" data-page="pipeline" type="button">Commission</button>
+          <button class="nav-button" data-page="analytics" type="button">Analytics</button>
+        </nav>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Mobile-first sales desk</p>
+            <h1 id="page-title">Today</h1>
+          </div>
+          <div class="topbar-actions">
+            <div class="agent-switch">
+              <span>Agent</span>
+              <select id="agent-filter" aria-label="Filter by agent">
+                <option value="All">All</option>
+                <option value="Ayoub">Ayoub</option>
+                <option value="Youssef">Youssef</option>
+              </select>
+            </div>
+            <button class="ghost-action" data-export-data type="button">Backup Data</button>
+            <label class="import-backup">
+              Import
+              <input id="import-backup-file" type="file" accept="application/json" />
+            </label>
+            <button class="danger-action" data-reset-all type="button">Reset All Data</button>
+          </div>
+        </header>
+
+        <section class="page active" id="today-page" aria-labelledby="page-title">
+          <div class="section-heading">
+            <div>
+              <h2>Morning Focus</h2>
+              <p>Only what needs action today.</p>
+            </div>
+            <span class="date-pill" id="today-date"></span>
+          </div>
+          <div class="ai-brief" id="today-ai-brief"></div>
+          <div class="today-grid" id="today-grid"></div>
+        </section>
+
+        <section class="page" id="sync-page">
+          <div class="section-heading">
+            <div>
+              <h2>Team Cloud Sync</h2>
+              <p>Use the same CRM data on phone and computer.</p>
+            </div>
+          </div>
+          <div class="sync-panel">
+            <div>
+              <span class="ai-label">Shared Database</span>
+              <h3 id="sync-status">Local only</h3>
+              <p class="card-meta" id="sync-detail">Connect a shared workspace to sync leads, properties, owners, visits, and social posts.</p>
+            </div>
+            <form class="sync-form" id="sync-form">
+              <label>
+                Workspace
+                <input id="sync-workspace" placeholder="benabella-realty" />
+              </label>
+              <label>
+                Sync Code
+                <input id="sync-secret" type="password" placeholder="Private team code" />
+              </label>
+              <button class="primary-action" type="submit">Connect & Pull</button>
+            </form>
+            <div class="sync-actions">
+              <button class="ghost-action" data-sync-push type="button">Push This Device</button>
+              <button class="ghost-action" data-sync-pull type="button">Pull Cloud Data</button>
+              <button class="danger-action" data-sync-disconnect type="button">Disconnect</button>
+            </div>
+            <div class="transfer-panel">
+              <h3>One-Time Phone Transfer</h3>
+              <p class="card-meta">Use this if cloud sync is not configured yet.</p>
+              <textarea id="transfer-code" placeholder="Paste transfer code here on the phone"></textarea>
+              <div class="sync-actions">
+                <button class="ghost-action" data-copy-transfer type="button">Copy Transfer Code</button>
+                <button class="primary-action" data-import-transfer type="button">Import Transfer Code</button>
+              </div>
+            </div>
+            <p class="card-meta">First connect on your PC and click “Push This Device”. Then connect on your phone and click “Pull Cloud Data”.</p>
+          </div>
+        </section>
+
+        <section class="page" id="assistant-page">
+          <div class="section-heading">
+            <div>
+              <h2>AI Coach</h2>
+              <p>Smart daily suggestions, matching, and next actions.</p>
+            </div>
+          </div>
+          <div class="ai-layout">
+            <div class="ai-panel" id="ai-daily-brief"></div>
+            <div class="ai-panel">
+              <h3>Ask the Coach</h3>
+              <form class="ai-ask" id="ai-ask-form">
+                <textarea id="ai-question" placeholder="Example: who should I call first today?"></textarea>
+                <button class="primary-action" type="submit">Get Suggestion</button>
+              </form>
+              <div class="assistant-answer" id="assistant-answer"></div>
+            </div>
+          </div>
+          <div class="ai-panel">
+            <h3>Best Lead to Property Matches</h3>
+            <div class="match-board" id="ai-match-board"></div>
+          </div>
+        </section>
+
+        <section class="page" id="leads-page">
+          <div class="section-heading">
+            <div>
+              <h2>Lead Desk</h2>
+              <p>Heat score, buyer card, lost reason, duplicate phone check.</p>
+            </div>
+          </div>
+          <form class="compact-form" id="lead-form">
+            <label>
+              Phone
+              <input id="new-lead-phone" name="phone" placeholder="+212 6..." autocomplete="tel" />
+            </label>
+            <label>
+              Name
+              <input id="new-lead-name" name="name" placeholder="Buyer name" />
+            </label>
+            <label>
+              Source
+              <select id="new-lead-source" name="source">
+                <option>WhatsApp</option>
+                <option>Avito</option>
+                <option>Facebook Marketplace</option>
+                <option>Facebook Ads</option>
+                <option>TikTok</option>
+                <option>Instagram</option>
+                <option>Referrals</option>
+              </select>
+            </label>
+            <label>
+              Area Wanted
+              <input id="new-lead-area" name="area" placeholder="Founty, Salam..." />
+            </label>
+            <label>
+              Budget Max
+              <input id="new-lead-budget" name="budget" type="number" min="0" step="10000" placeholder="900000" />
+            </label>
+            <label>
+              Rooms
+              <select id="new-lead-rooms" name="rooms">
+                <option>Not set</option>
+                <option>Studio</option>
+                <option>1 room</option>
+                <option>2 rooms</option>
+                <option>3 rooms</option>
+                <option>4+ rooms</option>
+              </select>
+            </label>
+            <label>
+              Surface
+              <input id="new-lead-surface" name="surface" placeholder="80-110 m2" />
+            </label>
+            <button class="primary-action" type="submit">Add Lead</button>
+            <p class="form-alert" id="duplicate-warning" role="status"></p>
+          </form>
+          <div class="lead-layout">
+            <div class="list-panel" id="lead-list"></div>
+            <div class="detail-panel" id="lead-detail"></div>
+          </div>
+        </section>
+
+        <section class="page" id="properties-page">
+          <div class="section-heading">
+            <div>
+              <h2>Properties</h2>
+              <p>Inventory, repost reminders, private documents, marketing text.</p>
+            </div>
+          </div>
+          <form class="property-form" id="property-form">
+            <label>
+              Title
+              <input id="new-property-title" placeholder="Apartment in Founty" />
+            </label>
+            <label>
+              Type
+              <select id="new-property-type">
+                <option>Apartment</option>
+                <option>Villa</option>
+                <option>Land</option>
+                <option>Commercial</option>
+                <option>Office</option>
+              </select>
+            </label>
+            <label>
+              Area
+              <input id="new-property-area" placeholder="Founty" />
+            </label>
+            <label>
+              Price
+              <input id="new-property-price" type="number" min="0" step="10000" placeholder="900000" />
+            </label>
+            <label>
+              Agent
+              <select id="new-property-agent">
+                <option>Ayoub</option>
+                <option>Youssef</option>
+              </select>
+            </label>
+            <button class="primary-action" type="submit">Add Property</button>
+          </form>
+          <div class="property-layout">
+            <div class="list-panel" id="property-list"></div>
+            <div class="detail-panel" id="property-detail"></div>
+          </div>
+        </section>
+
+        <section class="page" id="social-page">
+          <div class="section-heading">
+            <div>
+              <h2>Social Media Tracker</h2>
+              <p>Instagram, TikTok, and Facebook posting queue.</p>
+            </div>
+          </div>
+          <div class="metric-grid" id="social-metrics"></div>
+          <div class="connection-panel">
+            <div>
+              <h3>Connected Accounts</h3>
+              <p class="card-meta">Use this to track accounts now. Real automatic data needs a secure backend connection.</p>
+            </div>
+            <form class="social-account-form" id="social-account-form">
+              <label>
+                Platform
+                <select id="social-account-platform">
+                  <option>Instagram</option>
+                  <option>TikTok</option>
+                  <option>Facebook</option>
+                </select>
+              </label>
+              <label>
+                Account
+                <input id="social-account-name" placeholder="@benabellarealty" />
+              </label>
+              <button class="ghost-action" type="submit">Save Account</button>
+            </form>
+            <div class="connect-buttons">
+              <button class="ghost-action" data-connect-account="Instagram" type="button">Connect Instagram</button>
+              <button class="ghost-action" data-connect-account="TikTok" type="button">Connect TikTok</button>
+              <button class="ghost-action" data-connect-account="Facebook" type="button">Connect Facebook</button>
+            </div>
+            <div class="account-grid" id="social-account-grid"></div>
+          </div>
+          <form class="social-form" id="social-form">
+            <label>
+              Platform
+              <select id="social-platform">
+                <option>Instagram</option>
+                <option>TikTok</option>
+                <option>Facebook</option>
+              </select>
+            </label>
+            <label>
+              Property
+              <select id="social-property"></select>
+            </label>
+            <label>
+              Post Type
+              <select id="social-post-type">
+                <option>Listing</option>
+                <option>Reel</option>
+                <option>Story</option>
+                <option>Before/After</option>
+                <option>Area Highlight</option>
+              </select>
+            </label>
+            <label>
+              Date
+              <input id="social-date" type="date" />
+            </label>
+            <label>
+              Agent
+              <select id="social-agent">
+                <option>Ayoub</option>
+                <option>Youssef</option>
+              </select>
+            </label>
+            <button class="primary-action" type="submit">Add Post</button>
+          </form>
+          <div class="two-column">
+            <div class="chart-panel">
+              <h3>Platform Performance</h3>
+              <div id="social-platform-bars"></div>
+            </div>
+            <div class="chart-panel">
+              <h3>Posting Mix</h3>
+              <div id="social-post-type-donut"></div>
+            </div>
+          </div>
+          <div class="social-grid" id="social-grid"></div>
+        </section>
+
+        <section class="page" id="owners-page">
+          <div class="section-heading">
+            <div>
+              <h2>Owner CRM</h2>
+              <p>Build inventory with clean owner follow-up.</p>
+            </div>
+          </div>
+          <form class="owner-form" id="owner-form">
+            <label>
+              Owner Name
+              <input id="new-owner-name" placeholder="Owner name" />
+            </label>
+            <label>
+              Phone
+              <input id="new-owner-phone" placeholder="+212 6..." />
+            </label>
+            <label>
+              Asking Price
+              <input id="new-owner-asking" type="number" min="0" step="10000" placeholder="900000" />
+            </label>
+            <label>
+              Lowest Accepted
+              <input id="new-owner-lowest" type="number" min="0" step="10000" placeholder="850000" />
+            </label>
+            <label>
+              Agreement
+              <select id="new-owner-agreement">
+                <option>Needs mandate</option>
+                <option>Non-exclusive</option>
+                <option>Exclusive signed</option>
+                <option>Mandate draft</option>
+              </select>
+            </label>
+            <button class="primary-action" type="submit">Add Owner</button>
+          </form>
+          <div class="owner-grid" id="owner-grid"></div>
+        </section>
+
+        <section class="page" id="visits-page">
+          <div class="section-heading">
+            <div>
+              <h2>Visits</h2>
+              <p>Quick feedback after each showing.</p>
+            </div>
+          </div>
+          <form class="visit-form" id="visit-form">
+            <label>
+              Lead
+              <select id="new-visit-lead"></select>
+            </label>
+            <label>
+              Property
+              <select id="new-visit-property"></select>
+            </label>
+            <label>
+              Date
+              <input id="new-visit-date" type="date" />
+            </label>
+            <label>
+              Time
+              <input id="new-visit-time" type="time" />
+            </label>
+            <label>
+              Agent
+              <select id="new-visit-agent">
+                <option>Ayoub</option>
+                <option>Youssef</option>
+              </select>
+            </label>
+            <button class="primary-action" type="submit">Add Visit</button>
+          </form>
+          <div class="visit-grid" id="visit-grid"></div>
+        </section>
+
+        <section class="page" id="pipeline-page">
+          <div class="section-heading">
+            <div>
+              <h2>Commission Pipeline</h2>
+              <p>Expected, possible, closed, by agent and platform.</p>
+            </div>
+          </div>
+          <div class="metric-grid" id="commission-metrics"></div>
+          <div class="chart-panel">
+            <h3>Pipeline Shape</h3>
+            <div id="pipeline-shape"></div>
+          </div>
+          <div class="two-column">
+            <div class="chart-panel">
+              <h3>By Agent</h3>
+              <div id="commission-agents"></div>
+            </div>
+            <div class="chart-panel">
+              <h3>By Platform</h3>
+              <div id="commission-platforms"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="analytics-page">
+          <div class="section-heading">
+            <div>
+              <h2>Simple Analytics</h2>
+              <p>Sales signals without accounting clutter.</p>
+            </div>
+          </div>
+          <div class="metric-grid" id="analytics-metrics"></div>
+          <div class="two-column">
+            <div class="chart-panel">
+              <h3>Lead Source Mix</h3>
+              <div id="source-donut"></div>
+            </div>
+            <div class="chart-panel">
+              <h3>Property Area Mix</h3>
+              <div id="area-donut"></div>
+            </div>
+          </div>
+          <div class="chart-panel">
+            <h3>Top Lost Reasons</h3>
+            <div id="lost-reasons"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
