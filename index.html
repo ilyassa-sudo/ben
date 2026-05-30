@@ -135,8 +135,8 @@
         <section class="page" id="assistant-page">
           <div class="section-heading">
             <div>
-              <h2>AI Coach</h2>
-              <p>Smart daily suggestions, matching, and next actions.</p>
+              <h2>AI Sales Mentor</h2>
+              <p>Ask what to do next and get a clear sales plan.</p>
             </div>
           </div>
           <div class="ai-layout">
@@ -144,9 +144,16 @@
             <div class="ai-panel">
               <h3>Ask the Coach</h3>
               <form class="ai-ask" id="ai-ask-form">
-                <textarea id="ai-question" placeholder="Example: who should I call first today?"></textarea>
+                <textarea id="ai-question" placeholder="Ask: What should I do now? How do I close today? Which lead should I push?"></textarea>
                 <button class="primary-action" type="submit">Get Suggestion</button>
               </form>
+              <div class="mentor-prompts">
+                <button class="tiny-action" data-mentor-prompt="What should I do right now today?" type="button">What now?</button>
+                <button class="tiny-action" data-mentor-prompt="How do I close more deals this week?" type="button">Close deals</button>
+                <button class="tiny-action" data-mentor-prompt="Which lead should I call first and what should I say?" type="button">Call first</button>
+                <button class="tiny-action" data-mentor-prompt="Give me a social media plan for today." type="button">Social plan</button>
+                <button class="tiny-action" data-mentor-prompt="How do I negotiate better with owners and buyers?" type="button">Negotiate</button>
+              </div>
               <div class="assistant-answer" id="assistant-answer"></div>
             </div>
           </div>
@@ -277,7 +284,7 @@
             <form class="social-sync-form" id="social-sync-form">
               <label class="wide-field">
                 Secure Connector URL
-                <input id="social-sync-endpoint" placeholder="https://..." />
+                <input id="social-sync-endpoint" placeholder="Paste secure connector URL, not a TikTok/Instagram profile" />
               </label>
               <label>
                 Refresh Minutes
@@ -503,7 +510,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260530-social-auto-final"></script>
-    <script src="app.js?v=20260530-social-auto-final"></script>
+    <script src="firebase-config.js?v=20260530-ai-mentor"></script>
+    <script src="app.js?v=20260530-ai-mentor"></script>
   </body>
 </html>

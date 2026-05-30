@@ -866,8 +866,6 @@ function renderAssistant() {
   const visits = filtered(state.visits);
   const properties = filtered(state.properties);
   const brief = dailyBrief(leads, visits, properties);
-  const hotLead = leads.filter((lead) => lead.status !== "Lost").sort((a, b) => scoreLead(b) - scoreLead(a))[0];
-  const bestMatch = hotLead ? matchPropertiesForLead(hotLead)[0] : null;
   const cards = aiRecommendations(leads, visits, properties);
 
   document.querySelector("#ai-daily-brief").innerHTML = `
@@ -885,12 +883,7 @@ function renderAssistant() {
     </div>
   `;
 
-  document.querySelector("#assistant-answer").innerHTML = hotLead ? `
-    <div class="assistant-answer-card">
-      <strong>Start with ${hotLead.name}</strong>
-      <p>${nextActionText(hotLead)} ${bestMatch ? `Best property to send: ${bestMatch.property.title} (${bestMatch.score}% match).` : "No strong property match yet."}</p>
-    </div>
-  ` : `<p class="card-meta">Add leads to receive suggestions.</p>`;
+  document.querySelector("#assistant-answer").innerHTML = mentorAnswerHtml("What should I do right now today?");
 
   document.querySelector("#ai-match-board").innerHTML = bestLeadPropertyPairs().map((pair) => `
     <article class="match-card">
@@ -1602,6 +1595,125 @@ function scorePropertyMatch(lead, property) {
   return { score: Math.min(100, score), reasons: reasons.slice(0, 4) };
 }
 
+function mentorContext() {
+  const todayIso = iso(today);
+  const leads = filtered(state.leads).filter((lead) => lead.status !== "Lost");
+  const properties = filtered(state.properties);
+  const visits = filtered(state.visits);
+  const hotLeads = [...leads].sort((a, b) => scoreLead(b) - scoreLead(a)).slice(0, 3);
+  const overdue = leads.filter((lead) => lead.followUp < todayIso);
+  const visitsToday = visits.filter((visit) => visit.date === todayIso);
+  const offers = leads.filter((lead) => lead.madeOffer || lead.status === "Offer Made" || lead.status === "Negotiation");
+  const dueReposts = properties.filter((property) => property.status === "Available" && property.nextRepost <= todayIso);
+  const bestPair = bestLeadPropertyPairs()[0];
+  const staleOwner = state.owners.find((owner) => daysSince(owner.lastContact) >= 7);
+  const socialStats = socialPlatformStats(filtered(state.socialPosts));
+  const bestPlatform = bestSocialPlatform(socialStats) || "No clear winner yet";
+  const activeCommission = sum(state.deals.filter((deal) => deal.stage === "Negotiation"), "expectedCommission");
+  const hotCommission = sum(state.deals.filter((deal) => deal.stage === "Hot Lead"), "expectedCommission");
+
+  return { todayIso, leads, properties, visitsToday, hotLeads, overdue, offers, dueReposts, bestPair, staleOwner, bestPlatform, activeCommission, hotCommission };
+}
+
+function actionList(context, question) {
+  const text = clean(question);
+  const lead = context.hotLeads[0];
+  const actions = [];
+
+  if (text.includes("close") || text.includes("deal") || text.includes("commission")) {
+    if (context.offers[0]) actions.push(`Call ${context.offers[0].name} and ask for a clear yes/no buying position today.`);
+    if (context.bestPair) actions.push(`Send ${context.bestPair.property.title} to ${context.bestPair.lead.name} with one direct visit question.`);
+    actions.push("Move every serious buyer to one next step: visit, offer, or lost reason.");
+    actions.push("Do not spend the morning chatting with cold leads until hot leads are handled.");
+    return actions;
+  }
+
+  if (text.includes("social") || text.includes("post") || text.includes("tiktok") || text.includes("instagram") || text.includes("facebook")) {
+    if (context.dueReposts[0]) actions.push(`Post ${context.dueReposts[0].title} first on Avito, Facebook, Instagram, and TikTok.`);
+    actions.push("Use one property video, one price/location story, and one WhatsApp call-to-action.");
+    actions.push(`Watch ${context.bestPlatform} first because it is currently the best signal in the CRM.`);
+    actions.push("After posting, enter views, likes, shares, saves, messages, and leads before the end of the day.");
+    return actions;
+  }
+
+  if (text.includes("owner") || text.includes("inventory") || text.includes("mandate")) {
+    if (context.staleOwner) actions.push(`Call ${context.staleOwner.name}: confirm asking price, lowest accepted price, and mandate status.`);
+    actions.push("Ask each owner for one missing document or one better photo set.");
+    actions.push("Push owners to give you a realistic price before you spend money or time reposting.");
+    return actions;
+  }
+
+  if (lead) actions.push(`Call ${lead.name} first. Score: ${scoreLead(lead)}/100. Goal: ${nextActionText(lead).toLowerCase()}.`);
+  if (context.bestPair) actions.push(`Send ${context.bestPair.property.title} to ${context.bestPair.lead.name}; match score ${context.bestPair.score}/100.`);
+  if (context.visitsToday[0]) actions.push(`Prepare the visit with ${leadById(context.visitsToday[0].leadId)?.name || "the buyer"}: price, condition, location objections.`);
+  if (context.overdue[0]) actions.push(`Clear overdue follow-up with ${context.overdue[0].name}; do not let it age another day.`);
+  if (context.dueReposts[0]) actions.push(`Repost ${context.dueReposts[0].title}; stale listings lose attention fast.`);
+  return actions.length ? actions : ["Add leads with budget, area, rooms, surface, and timeline so the mentor can prioritize properly."];
+}
+
+function mentorScript(context, question) {
+  const text = clean(question);
+  const lead = context.hotLeads[0];
+  const pair = context.bestPair;
+  const property = pair?.property || (lead ? matchPropertiesForLead(lead)[0]?.property : null);
+
+  if (!lead) return "Start by adding one real buyer lead with phone, budget, area, rooms, surface, and timeline.";
+
+  if (text.includes("owner") || text.includes("inventory") || text.includes("mandate")) {
+    return `Bonjour, this is Benabella Realty. I am checking the listing today: is the property still available, what is the real lowest accepted price, and do we have permission to repost it this week?`;
+  }
+
+  if (text.includes("negotiate") || text.includes("price")) {
+    return `Bonjour ${lead.name}, before I negotiate with the owner, I need your serious best offer and your timing. If the owner accepts, are you ready to move forward?`;
+  }
+
+  if (property) {
+    return `Bonjour ${lead.name}, I found a property that matches your request: ${property.title} in ${property.area}, price ${money(property.price)}. It fits your area/budget better than most options. Do you want photos or a visit time today?`;
+  }
+
+  return `Bonjour ${lead.name}, to help you properly I need three things: exact budget, preferred area, and when you want to buy. Then I will send only matching properties.`;
+}
+
+function mentorDiagnosis(context) {
+  if (!context.leads.length) return "You need buyer data first. The CRM cannot coach without real leads.";
+  if (context.offers.length) return "Your money is closest in offers and negotiations. Protect your morning for closing, not browsing.";
+  if (context.hotLeads.length) return "Your best leverage is fast response: call the hottest lead, send one matching property, and ask for a visit.";
+  if (context.overdue.length) return "Your pipeline is leaking through late follow-ups. Clean those before creating new work.";
+  return "The business needs more qualification: budget, area, rooms, surface, financing, and timeline.";
+}
+
+function mentorAnswerHtml(question) {
+  const context = mentorContext();
+  const actions = actionList(context, question).slice(0, 5);
+  const hotLead = context.hotLeads[0];
+  const focus = hotLead ? `${hotLead.name} (${scoreLead(hotLead)}/100)` : "Add or qualify leads";
+  const commissionLine = context.activeCommission || context.hotCommission
+    ? `Negotiations: ${money(context.activeCommission)}. Hot lead potential: ${money(context.hotCommission)}.`
+    : "No commission forecast yet. Add active deals when offers or negotiations start.";
+
+  return `
+    <div class="assistant-answer-card mentor-answer">
+      <div class="mentor-section">
+        <span class="ai-label">Professional Mentor</span>
+        <strong>Focus now: ${focus}</strong>
+        <p>${mentorDiagnosis(context)}</p>
+      </div>
+      <div class="mentor-section">
+        <strong>Do this next</strong>
+        <ol>${actions.map((action) => `<li>${action}</li>`).join("")}</ol>
+      </div>
+      <div class="mentor-section">
+        <strong>Message to use</strong>
+        <p class="mentor-script">${mentorScript(context, question)}</p>
+      </div>
+      <div class="mentor-section">
+        <strong>Manager note</strong>
+        <p>${commissionLine} Visits today: ${context.visitsToday.length}. Overdue follow-ups: ${context.overdue.length}. Reposts due: ${context.dueReposts.length}.</p>
+      </div>
+    </div>
+  `;
+}
+
 function answerQuestion(question) {
   const text = clean(question);
   const leads = filtered(state.leads).filter((lead) => lead.status !== "Lost");
@@ -1776,6 +1888,10 @@ function renderSocialBars(selector, stats) {
   `).join("");
 }
 
+function isSocialProfileUrl(value) {
+  return /(?:tiktok\.com|instagram\.com|facebook\.com|fb\.com)/i.test(value || "");
+}
+
 function metricValue(...values) {
   return values.map((value) => Number(value)).find((value) => Number.isFinite(value) && value > 0) || 0;
 }
@@ -1866,6 +1982,12 @@ function configureSocialAutoSync() {
 async function syncSocialFromConnector(showMessage = true) {
   if (!state.socialSync.endpoint) {
     if (showMessage) showToast("Add connector URL first");
+    return;
+  }
+  if (isSocialProfileUrl(state.socialSync.endpoint)) {
+    state.socialSync.status = "Profile link is not a connector";
+    renderSocialSync();
+    if (showMessage) showToast("Paste a connector URL, not a social profile link");
     return;
   }
   try {
@@ -2257,6 +2379,13 @@ document.addEventListener("click", async (event) => {
     await syncSocialFromConnector(true);
   }
 
+  const mentorPrompt = event.target.closest("[data-mentor-prompt]");
+  if (mentorPrompt) {
+    const question = mentorPrompt.dataset.mentorPrompt;
+    document.querySelector("#ai-question").value = question;
+    document.querySelector("#assistant-answer").innerHTML = mentorAnswerHtml(question);
+  }
+
   const resetAll = event.target.closest("[data-reset-all]");
   if (resetAll) {
     if (window.confirm("This deletes all CRM data on this device. A local backup will be saved first. Continue?")) {
@@ -2357,12 +2486,7 @@ document.querySelector("#lead-form").addEventListener("submit", (event) => {
 document.querySelector("#ai-ask-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const question = document.querySelector("#ai-question").value.trim();
-  document.querySelector("#assistant-answer").innerHTML = `
-    <div class="assistant-answer-card">
-      <strong>Suggestion</strong>
-      <p>${answerQuestion(question)}</p>
-    </div>
-  `;
+  document.querySelector("#assistant-answer").innerHTML = mentorAnswerHtml(question || "What should I do right now today?");
 });
 
 document.querySelector("#sync-form").addEventListener("submit", async (event) => {
