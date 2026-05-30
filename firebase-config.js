@@ -1,5 +1,5 @@
 window.BENABELLA_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyA_rpt0oLSkHxF0ET6u2TzaFdEnnUgMWJY",
+  apiKey: "AIzaSyA_rptOoLSkHxF0ET6u2TzaFdEnnUgMWJY",
   authDomain: "benabella-realty-crm.firebaseapp.com",
   projectId: "benabella-realty-crm",
   storageBucket: "benabella-realty-crm.firebasestorage.app",
