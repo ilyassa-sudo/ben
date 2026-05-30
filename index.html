@@ -20,7 +20,7 @@
         <nav class="nav-list">
           <button class="nav-button active" data-page="today" type="button">Today</button>
           <button class="nav-button" data-page="sync" type="button">Sync</button>
-          <button class="nav-button" data-page="assistant" type="button">AI Coach</button>
+          <button class="nav-button" data-page="assistant" type="button">AI Agent</button>
           <button class="nav-button" data-page="leads" type="button">Leads</button>
           <button class="nav-button" data-page="properties" type="button">Properties</button>
           <button class="nav-button" data-page="social" type="button">Social</button>
@@ -135,26 +135,52 @@
         <section class="page" id="assistant-page">
           <div class="section-heading">
             <div>
-              <h2>AI Sales Mentor</h2>
-              <p>Ask what to do next and get a clear sales plan.</p>
+              <h2>Benabella AI Agent</h2>
+              <p>COO, sales manager, lead manager, and growth advisor.</p>
             </div>
           </div>
           <div class="ai-layout">
-            <div class="ai-panel" id="ai-daily-brief"></div>
+            <div class="ai-panel" id="ai-command-center"></div>
             <div class="ai-panel">
-              <h3>Ask the Coach</h3>
+              <h3>Ask the Agent</h3>
+              <div class="agent-controls">
+                <label>
+                  Mode
+                  <select id="ai-agent-mode">
+                    <option>COO Review</option>
+                    <option>Sales Manager</option>
+                    <option>Lead Manager</option>
+                    <option>Owner Growth</option>
+                    <option>Marketing</option>
+                    <option>Negotiation</option>
+                    <option>Agadir Market</option>
+                    <option>Closing Plan</option>
+                  </select>
+                </label>
+              </div>
               <form class="ai-ask" id="ai-ask-form">
-                <textarea id="ai-question" placeholder="Ask: What should I do now? How do I close today? Which lead should I push?"></textarea>
-                <button class="primary-action" type="submit">Get Suggestion</button>
+                <textarea id="ai-question" placeholder="Ask the agent: What should we do today? Why are deals not closing? How do we get better owners? What should we post?"></textarea>
+                <button class="primary-action" type="submit">Ask Benabella AI</button>
               </form>
               <div class="mentor-prompts">
-                <button class="tiny-action" data-mentor-prompt="What should I do right now today?" type="button">What now?</button>
-                <button class="tiny-action" data-mentor-prompt="How do I close more deals this week?" type="button">Close deals</button>
-                <button class="tiny-action" data-mentor-prompt="Which lead should I call first and what should I say?" type="button">Call first</button>
-                <button class="tiny-action" data-mentor-prompt="Give me a social media plan for today." type="button">Social plan</button>
-                <button class="tiny-action" data-mentor-prompt="How do I negotiate better with owners and buyers?" type="button">Negotiate</button>
+                <button class="tiny-action" data-mentor-prompt="Give me the daily business review and the highest priority action." type="button">Daily review</button>
+                <button class="tiny-action" data-mentor-prompt="Which buyers are serious and which buyers are wasting time?" type="button">Buyer quality</button>
+                <button class="tiny-action" data-mentor-prompt="Which owners and listings should we focus on?" type="button">Owner quality</button>
+                <button class="tiny-action" data-mentor-prompt="Why are we losing deals and what should we fix?" type="button">Lost deals</button>
+                <button class="tiny-action" data-mentor-prompt="Give me a growth plan for Agadir listings, buyers, Avito, Facebook, Instagram, and TikTok." type="button">Growth plan</button>
+                <button class="tiny-action" data-clear-agent-chat type="button">Clear chat</button>
               </div>
               <div class="assistant-answer" id="assistant-answer"></div>
+            </div>
+          </div>
+          <div class="two-column">
+            <div class="ai-panel">
+              <h3>Opportunity & Risk Board</h3>
+              <div id="ai-risk-board"></div>
+            </div>
+            <div class="ai-panel">
+              <h3>Why We Lose Deals</h3>
+              <div id="ai-lost-board"></div>
             </div>
           </div>
           <div class="ai-panel">
@@ -510,7 +536,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260530-ai-mentor"></script>
-    <script src="app.js?v=20260530-ai-mentor"></script>
+    <script src="firebase-config.js?v=20260530-benabella-ai-agent"></script>
+    <script src="app.js?v=20260530-benabella-ai-agent"></script>
   </body>
 </html>

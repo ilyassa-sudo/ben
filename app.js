@@ -14,6 +14,13 @@ const defaultSocialSync = {
   status: "Not connected",
   intervalMinutes: 60
 };
+const defaultAiAgent = {
+  endpoint: "",
+  enabled: false,
+  mode: "Sales Mentor",
+  status: "Local CRM brain",
+  messages: []
+};
 const cloneData = (value) => {
   if (typeof structuredClone === "function") return structuredClone(value);
   return JSON.parse(JSON.stringify(value));
@@ -39,7 +46,8 @@ const emptyData = {
   deals: [],
   socialPosts: [],
   socialAccounts: [],
-  socialSync: cloneData(defaultSocialSync)
+  socialSync: cloneData(defaultSocialSync),
+  aiAgent: cloneData(defaultAiAgent)
 };
 
 const sourceQuality = {
@@ -603,6 +611,9 @@ function normalizeState() {
   state.socialSync.enabled = Boolean(state.socialSync.enabled);
   state.socialSync.endpoint = state.socialSync.endpoint || "";
   state.socialSync.intervalMinutes = Math.max(15, Number(state.socialSync.intervalMinutes) || defaultSocialSync.intervalMinutes);
+  state.aiAgent = { ...cloneData(defaultAiAgent), ...(state.aiAgent || {}) };
+  state.aiAgent.messages = Array.isArray(state.aiAgent.messages) ? state.aiAgent.messages.slice(-20) : [];
+  state.aiAgent.mode = state.aiAgent.mode || "COO Review";
 
   state.leads.forEach((lead) => {
     const requirement = lead.requirement || {};
@@ -862,28 +873,12 @@ function renderSync() {
 }
 
 function renderAssistant() {
-  const leads = filtered(state.leads);
-  const visits = filtered(state.visits);
-  const properties = filtered(state.properties);
-  const brief = dailyBrief(leads, visits, properties);
-  const cards = aiRecommendations(leads, visits, properties);
-
-  document.querySelector("#ai-daily-brief").innerHTML = `
-    <span class="ai-label">Smart Assistant</span>
-    <h3>${brief.headline}</h3>
-    <p>${brief.detail}</p>
-    <div class="ai-card-grid">
-      ${cards.map((card) => `
-        <article class="ai-card">
-          <span>${card.label}</span>
-          <strong>${card.title}</strong>
-          <p>${card.detail}</p>
-        </article>
-      `).join("")}
-    </div>
-  `;
-
-  document.querySelector("#assistant-answer").innerHTML = mentorAnswerHtml("What should I do right now today?");
+  const context = mentorContext();
+  document.querySelector("#ai-command-center").innerHTML = commandCenterHtml(context);
+  document.querySelector("#ai-agent-mode").value = state.aiAgent.mode || "COO Review";
+  document.querySelector("#assistant-answer").innerHTML = agentChatHtml();
+  document.querySelector("#ai-risk-board").innerHTML = riskBoardHtml(context);
+  document.querySelector("#ai-lost-board").innerHTML = lostBoardHtml();
 
   document.querySelector("#ai-match-board").innerHTML = bestLeadPropertyPairs().map((pair) => `
     <article class="match-card">
@@ -1611,8 +1606,178 @@ function mentorContext() {
   const bestPlatform = bestSocialPlatform(socialStats) || "No clear winner yet";
   const activeCommission = sum(state.deals.filter((deal) => deal.stage === "Negotiation"), "expectedCommission");
   const hotCommission = sum(state.deals.filter((deal) => deal.stage === "Hot Lead"), "expectedCommission");
+  const closedMonth = state.deals.filter((deal) => deal.stage === "Closed" && sameMonth(deal.closedDate));
+  const activeOwners = state.owners.filter((owner) => owner.agreement !== "Lost" && owner.agreement !== "Stopped");
+  const negotiations = state.deals.filter((deal) => deal.stage === "Negotiation").length + leads.filter((lead) => lead.status === "Negotiation").length;
 
-  return { todayIso, leads, properties, visitsToday, hotLeads, overdue, offers, dueReposts, bestPair, staleOwner, bestPlatform, activeCommission, hotCommission };
+  return { todayIso, leads, properties, visitsToday, hotLeads, overdue, offers, dueReposts, bestPair, staleOwner, bestPlatform, activeCommission, hotCommission, closedMonth, activeOwners, negotiations };
+}
+
+function buyerSeriousnessScore(lead) {
+  let score = 1;
+  if (Number(lead.budget) || Number(lead.requirement?.budgetMax)) score += 1;
+  if (lead.realisticBudget) score += 1;
+  if (lead.requirement?.financing && lead.requirement.financing !== "Not set") score += 1;
+  if (lead.buySoon || /week|month|soon|urgent|now/i.test(lead.requirement?.timeline || "")) score += 1;
+  if (lead.bookedVisit) score += 1;
+  if (daysSince(lead.lastReply) <= 3) score += 1;
+  if (lead.status === "Visit Booked" || lead.status === "Interested") score += 1;
+  if (lead.madeOffer || lead.status === "Offer Made" || lead.status === "Negotiation") score += 2;
+  return Math.min(10, score);
+}
+
+function seriousnessLabel(score, type = "buyer") {
+  if (score <= 3) return type === "owner" ? "Difficult owner" : "Low quality lead";
+  if (score <= 6) return type === "owner" ? "Average owner" : "Medium quality lead";
+  if (score <= 8) return type === "owner" ? "Serious seller" : "Serious buyer";
+  return type === "owner" ? "Priority listing" : "High-priority buyer";
+}
+
+function ownerSeriousnessScore(owner) {
+  const properties = state.properties.filter((property) => property.ownerId === owner.id || owner.propertyIds?.includes(property.id));
+  let score = 1;
+  if (owner.askingPrice && owner.lowestPrice && owner.lowestPrice <= owner.askingPrice) score += 2;
+  if (/exclusive|signed/i.test(owner.agreement || "")) score += 2;
+  else if (/mandate|draft|non-exclusive/i.test(owner.agreement || "")) score += 1;
+  if (daysSince(owner.lastContact) <= 3) score += 1;
+  if (properties.some((property) => property.status === "Available")) score += 1;
+  if (owner.notes && owner.notes.length > 8) score += 1;
+  if (properties.some((property) => property.docs?.length)) score += 1;
+  if (properties.some((property) => property.publicPhotos >= 5)) score += 1;
+  return Math.min(10, score);
+}
+
+function propertyEvaluation(property) {
+  let score = 0;
+  const reasons = [];
+  const demandLeads = state.leads.filter((lead) => clean(lead.requirement?.area).includes(clean(property.area)) || clean(property.area).includes(clean(lead.requirement?.area))).length;
+  if (property.status === "Available") score += 12;
+  if (demandLeads) {
+    score += Math.min(20, demandLeads * 5);
+    reasons.push(`${demandLeads} buyer matches`);
+  }
+  if (property.price > 0) score += 12;
+  if (property.publicPhotos >= 6) {
+    score += 12;
+    reasons.push("good photo count");
+  } else {
+    reasons.push("needs better photos");
+  }
+  if (/elevator|parking|balcony|sunny|modern|beach|commercial/i.test(property.features || "")) score += 14;
+  if (property.nextRepost <= iso(today)) reasons.push("needs reposting");
+  if (property.docs?.length) score += 10;
+  if (property.platforms?.length >= 3) score += 10;
+  score += Math.min(20, Math.max(0, 20 - daysSince(property.lastPosted)));
+  return {
+    score: Math.min(100, score),
+    demand: score >= 75 ? "High demand potential" : score >= 50 ? "Medium demand" : "Needs improvement",
+    reasons
+  };
+}
+
+function agencyMetrics(context = mentorContext()) {
+  return {
+    activeBuyers: context.leads.length,
+    activeSellers: context.activeOwners.length,
+    listings: context.properties.length,
+    visitsToday: context.visitsToday.length,
+    followUpsDue: context.overdue.length,
+    negotiations: context.negotiations,
+    offers: context.offers.length,
+    closedDeals: context.closedMonth.length
+  };
+}
+
+function commandCenterHtml(context) {
+  const metrics = agencyMetrics(context);
+  const biggestOpportunity = context.bestPair
+    ? `${context.bestPair.lead.name} + ${context.bestPair.property.title} (${context.bestPair.score}/100 match)`
+    : context.hotLeads[0]?.name || "Add qualified buyers";
+  const biggestProblem = context.overdue.length
+    ? `${context.overdue.length} overdue follow-ups`
+    : context.dueReposts.length
+      ? `${context.dueReposts.length} stale listings need reposting`
+      : "No major bottleneck detected";
+  const highestPriority = actionList(context, "daily business review")[0];
+
+  return `
+    <span class="ai-label">Benabella AI Agent</span>
+    <h3>Daily Business Review</h3>
+    <div class="agent-command-grid">
+      ${Object.entries(metrics).map(([key, value]) => `
+        <article class="agent-kpi">
+          <span>${humanizeKey(key)}</span>
+          <strong>${value}</strong>
+        </article>
+      `).join("")}
+    </div>
+    <div class="mentor-section">
+      <strong>Biggest opportunity</strong>
+      <p>${biggestOpportunity}</p>
+    </div>
+    <div class="mentor-section">
+      <strong>Biggest problem</strong>
+      <p>${biggestProblem}</p>
+    </div>
+    <div class="mentor-section">
+      <strong>Highest priority action</strong>
+      <p>${highestPriority}</p>
+    </div>
+  `;
+}
+
+function riskBoardHtml(context) {
+  const buyerRows = [...context.leads]
+    .sort((a, b) => buyerSeriousnessScore(b) - buyerSeriousnessScore(a))
+    .slice(0, 4)
+    .map((lead) => `<article class="agent-kpi"><span>${seriousnessLabel(buyerSeriousnessScore(lead))}</span><strong>${lead.name}</strong><p>${buyerSeriousnessScore(lead)}/10 · ${lead.requirement.area} · ${budgetText(lead.requirement)}</p></article>`)
+    .join("");
+  const propertyRows = [...context.properties]
+    .sort((a, b) => propertyEvaluation(b).score - propertyEvaluation(a).score)
+    .slice(0, 4)
+    .map((property) => {
+      const evaluation = propertyEvaluation(property);
+      return `<article class="agent-kpi"><span>${evaluation.demand}</span><strong>${property.title}</strong><p>${evaluation.score}/100 · ${property.area} · ${evaluation.reasons.join(", ") || "clean listing"}</p></article>`;
+    })
+    .join("");
+
+  return `
+    <div class="quality-grid">${buyerRows || `<p class="card-meta">No buyers yet.</p>`}</div>
+    <h4>Property evaluation</h4>
+    <div class="quality-grid">${propertyRows || `<p class="card-meta">No listings yet.</p>`}</div>
+  `;
+}
+
+function lostBoardHtml() {
+  const lostLeads = state.leads.filter((lead) => lead.status === "Lost" || lead.lostReason);
+  const reasons = groupCount(lostLeads, "lostReason");
+  const entries = Object.entries(reasons).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return `<p class="card-meta">No lost reasons yet. When a deal is lost, record the reason so the agency learns.</p>`;
+  return `
+    <div class="agent-list">
+      ${entries.map(([reason, count]) => `
+        <article class="agent-kpi">
+          <span>${count} lost</span>
+          <strong>${reason || "No reason"}</strong>
+          <p>${lostReasonAdvice(reason)}</p>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function lostReasonAdvice(reason) {
+  const text = clean(reason);
+  if (text.includes("price")) return "Improve owner price discipline and show comparable alternatives before visits.";
+  if (text.includes("location")) return "Qualify exact area boundaries before sending listings.";
+  if (text.includes("condition")) return "Send honest photos/videos before booking the visit.";
+  if (text.includes("financing")) return "Confirm financing before spending time on premium listings.";
+  if (text.includes("reply")) return "Move non-responsive buyers to low priority after two follow-ups.";
+  return "Ask the buyer what blocked the decision and update the requirement card.";
+}
+
+function humanizeKey(key) {
+  return key.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
 }
 
 function actionList(context, question) {
@@ -1712,6 +1877,95 @@ function mentorAnswerHtml(question) {
       </div>
     </div>
   `;
+}
+
+function agentChatHtml() {
+  if (!state.aiAgent.messages.length) {
+    return agentResponseHtml("Give me the daily business review and the highest priority action.", state.aiAgent.mode || "COO Review");
+  }
+  return state.aiAgent.messages.map((message) => `
+    <div class="agent-message ${message.role}">
+      <small>${message.role === "user" ? "You" : "Benabella AI Agent"} · ${message.mode || "COO Review"}</small>
+      ${message.role === "assistant" ? message.html : `<p>${escapeHtml(message.content)}</p>`}
+    </div>
+  `).join("");
+}
+
+function agentResponseHtml(question, mode = "COO Review") {
+  const context = mentorContext();
+  const text = clean(`${mode} ${question}`);
+  const actions = actionList(context, question).slice(0, 5);
+  const metrics = agencyMetrics(context);
+  const bestBuyer = context.hotLeads[0];
+  const bestOwner = [...state.owners].sort((a, b) => ownerSeriousnessScore(b) - ownerSeriousnessScore(a))[0];
+  const bestProperty = [...context.properties].sort((a, b) => propertyEvaluation(b).score - propertyEvaluation(a).score)[0];
+  const leadQualityWarning = context.leads.filter((lead) => buyerSeriousnessScore(lead) <= 3).length;
+
+  let strategicAdvice = "Protect the day around revenue actions: serious buyers, visit bookings, offers, owner price correction, and reposting stale listings.";
+  if (text.includes("marketing") || text.includes("growth") || text.includes("avito") || text.includes("facebook") || text.includes("tiktok") || text.includes("instagram")) {
+    strategicAdvice = `Growth plan: repost ${context.dueReposts[0]?.title || "your best available listing"} with fresh first photo, push one TikTok walkthrough, one Instagram reel, one Facebook Marketplace repost, and one WhatsApp broadcast to warm buyers. Track messages and leads by platform before tonight.`;
+  } else if (text.includes("owner") || text.includes("listing")) {
+    strategicAdvice = bestOwner
+      ? `Owner strategy: prioritize ${bestOwner.name} (${ownerSeriousnessScore(bestOwner)}/10). Push for realistic price, documents, visit access, and exclusive/clear mandate. Weak owners should not consume prime selling time.`
+      : "Owner strategy: call owners in Founty, Hay Mohammadi, Salam, Dakhla, Tilila, Charaf, Sonaba, and Anza and ask for realistic-price listings with documents.";
+  } else if (text.includes("lost") || text.includes("lose")) {
+    strategicAdvice = "Every lost deal must become a lesson: record price, location, condition, financing, not serious, bought elsewhere, or stopped replying. Then fix the qualification question that would have revealed it earlier.";
+  } else if (text.includes("market") || text.includes("agadir")) {
+    strategicAdvice = "Agadir market play: focus content and prospecting around real buyer demand from your CRM. Segment by area: affordable buyers for Hay Mohammadi/Salam/Dakhla, lifestyle buyers for Founty/Sonaba, inventory growth around Tilila/Charaf/Anza/Ait Melloul.";
+  } else if (text.includes("close") || text.includes("negotiation")) {
+    strategicAdvice = "Closing plan: stop vague conversations. Every hot buyer needs one concrete next step today: visit time, document request, written offer, or lost reason.";
+  }
+
+  return `
+    <div class="mentor-answer">
+      <div class="mentor-section">
+        <span class="ai-label">${mode}</span>
+        <strong>Executive decision</strong>
+        <p>${strategicAdvice}</p>
+      </div>
+      <div class="mentor-section">
+        <strong>Agency numbers</strong>
+        <p>${metrics.activeBuyers} active buyers · ${metrics.activeSellers} active sellers · ${metrics.listings} listings · ${metrics.visitsToday} visits today · ${metrics.followUpsDue} follow-ups due · ${metrics.negotiations} negotiations · ${metrics.offers} offers · ${metrics.closedDeals} closed this month.</p>
+      </div>
+      <div class="mentor-section">
+        <strong>Next best actions</strong>
+        <ol>${actions.map((action) => `<li>${action}</li>`).join("")}</ol>
+      </div>
+      <div class="mentor-section">
+        <strong>Quality control</strong>
+        <ul>
+          <li>Best buyer: ${bestBuyer ? `${bestBuyer.name}, ${buyerSeriousnessScore(bestBuyer)}/10, ${seriousnessLabel(buyerSeriousnessScore(bestBuyer))}` : "No buyer data yet"}</li>
+          <li>Best owner: ${bestOwner ? `${bestOwner.name}, ${ownerSeriousnessScore(bestOwner)}/10, ${seriousnessLabel(ownerSeriousnessScore(bestOwner), "owner")}` : "No owner data yet"}</li>
+          <li>Best listing: ${bestProperty ? `${bestProperty.title}, ${propertyEvaluation(bestProperty).score}/100, ${propertyEvaluation(bestProperty).demand}` : "No property data yet"}</li>
+          <li>Time-waster risk: ${leadQualityWarning} low-quality buyers should be deprioritized.</li>
+        </ul>
+      </div>
+      <div class="mentor-section">
+        <strong>Message to send</strong>
+        <p class="mentor-script">${mentorScript(context, question)}</p>
+      </div>
+    </div>
+  `;
+}
+
+function askLocalAgent(question, mode) {
+  const answer = agentResponseHtml(question, mode);
+  state.aiAgent.messages.push({ role: "user", mode, content: question });
+  state.aiAgent.messages.push({ role: "assistant", mode, html: answer });
+  state.aiAgent.messages = state.aiAgent.messages.slice(-20);
+  state.aiAgent.mode = mode;
+  state.aiAgent.status = "Local CRM brain";
+  saveState();
+  renderAssistant();
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function answerQuestion(question) {
@@ -2382,8 +2636,17 @@ document.addEventListener("click", async (event) => {
   const mentorPrompt = event.target.closest("[data-mentor-prompt]");
   if (mentorPrompt) {
     const question = mentorPrompt.dataset.mentorPrompt;
+    const mode = document.querySelector("#ai-agent-mode")?.value || "COO Review";
     document.querySelector("#ai-question").value = question;
-    document.querySelector("#assistant-answer").innerHTML = mentorAnswerHtml(question);
+    askLocalAgent(question, mode);
+  }
+
+  const clearAgentChat = event.target.closest("[data-clear-agent-chat]");
+  if (clearAgentChat) {
+    state.aiAgent.messages = [];
+    saveState();
+    renderAssistant();
+    showToast("Agent chat cleared");
   }
 
   const resetAll = event.target.closest("[data-reset-all]");
@@ -2485,8 +2748,10 @@ document.querySelector("#lead-form").addEventListener("submit", (event) => {
 
 document.querySelector("#ai-ask-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  const question = document.querySelector("#ai-question").value.trim();
-  document.querySelector("#assistant-answer").innerHTML = mentorAnswerHtml(question || "What should I do right now today?");
+  const question = document.querySelector("#ai-question").value.trim() || "Give me the daily business review and the highest priority action.";
+  const mode = document.querySelector("#ai-agent-mode").value;
+  askLocalAgent(question, mode);
+  document.querySelector("#ai-question").value = "";
 });
 
 document.querySelector("#sync-form").addEventListener("submit", async (event) => {

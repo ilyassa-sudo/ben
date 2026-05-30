@@ -801,6 +801,12 @@ label {
   padding: 16px;
 }
 
+.agent-controls {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px);
+  margin-bottom: 10px;
+}
+
 .ai-card-grid,
 .match-list,
 .match-board {
@@ -836,6 +842,8 @@ label {
 
 .assistant-answer {
   margin-top: 12px;
+  max-height: 560px;
+  overflow: auto;
 }
 
 .mentor-prompts {
@@ -873,6 +881,55 @@ label {
   padding-left: 10px;
   color: var(--ink);
   line-height: 1.45;
+}
+
+.agent-message {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.agent-message.user {
+  background: #fbf6e9;
+}
+
+.agent-message small {
+  display: block;
+  color: var(--muted);
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.agent-command-grid,
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.agent-kpi {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.agent-kpi span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.agent-kpi strong {
+  font-size: 1.3rem;
+}
+
+.agent-list {
+  display: grid;
+  gap: 8px;
 }
 
 .ai-insight {
@@ -1139,6 +1196,8 @@ label {
   .social-metrics-form,
   .social-account-metrics-form,
   .social-stats,
+  .agent-command-grid,
+  .quality-grid,
   .compact-form {
     grid-template-columns: 1fr;
   }
