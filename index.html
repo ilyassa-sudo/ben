@@ -75,6 +75,26 @@
             </div>
           </div>
           <div class="sync-panel">
+            <div class="firebase-cloud-panel">
+              <span class="ai-label">Free Automatic Cloud</span>
+              <h3 id="firebase-status">Firebase not configured</h3>
+              <p class="card-meta" id="firebase-detail">Use Firebase Auth + Firestore for free shared CRM data on phone and computer.</p>
+              <form class="sync-form" id="firebase-login-form">
+                <label>
+                  Email
+                  <input id="firebase-email" type="email" placeholder="you@example.com" autocomplete="email" />
+                </label>
+                <label>
+                  Password
+                  <input id="firebase-password" type="password" placeholder="Firebase password" autocomplete="current-password" />
+                </label>
+                <button class="primary-action" type="submit">Log In Cloud</button>
+              </form>
+              <div class="sync-actions">
+                <button class="ghost-action" data-firebase-save type="button">Save To Cloud Now</button>
+                <button class="danger-action" data-firebase-logout type="button">Log Out Cloud</button>
+              </div>
+            </div>
             <div>
               <span class="ai-label">Shared Database</span>
               <h3 id="sync-status">Local only</h3>
@@ -447,6 +467,10 @@
     </div>
 
     <div class="toast" id="toast" role="status"></div>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

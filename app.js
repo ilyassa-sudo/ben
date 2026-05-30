@@ -321,10 +321,18 @@ const defaultData = {
 let cloudSync = loadSyncConfig();
 let syncTimer = null;
 let suppressCloudSave = true;
+let firebaseDb = null;
+let firebaseAuth = null;
+let firebaseUser = null;
+let firebaseDocRef = null;
+let firebaseUnsubscribe = null;
+let firebaseSaveTimer = null;
+let suppressFirebaseSave = true;
 let state = loadState();
 normalizeState();
 saveState();
 suppressCloudSave = false;
+suppressFirebaseSave = false;
 
 function loadState() {
   try {
@@ -373,6 +381,7 @@ function saveState() {
     // The CRM still works if a browser blocks local file storage.
   }
   scheduleCloudSave();
+  scheduleFirebaseSave();
 }
 
 function resetAllData() {
@@ -693,6 +702,19 @@ function renderSync() {
   document.querySelector("#sync-detail").textContent = cloudSync.enabled
     ? `Workspace: ${cloudSync.workspace}. Changes save locally and sync to the shared database.`
     : "This device is saving only in this browser. Connect cloud sync to share data across phone and computer.";
+
+  const firebaseStatus = document.querySelector("#firebase-status");
+  const firebaseDetail = document.querySelector("#firebase-detail");
+  if (!firebaseConfigAvailable()) {
+    firebaseStatus.textContent = "Firebase not configured";
+    firebaseDetail.textContent = "Add your Firebase config once, then login here on phone and computer for automatic shared data.";
+  } else if (firebaseUser) {
+    firebaseStatus.textContent = "Firebase cloud connected";
+    firebaseDetail.textContent = `Logged in as ${firebaseUser.email}. Data saves automatically to the shared CRM.`;
+  } else {
+    firebaseStatus.textContent = "Firebase ready";
+    firebaseDetail.textContent = "Log in with the Firebase user you created for Benabella Realty.";
+  }
 }
 
 function renderAssistant() {
@@ -1577,6 +1599,93 @@ function scheduleCloudSave() {
   }, 700);
 }
 
+function firebaseConfigAvailable() {
+  const config = window.BENABELLA_FIREBASE_CONFIG;
+  return Boolean(config?.apiKey && config?.projectId && config?.authDomain);
+}
+
+function firebaseWorkspace() {
+  return window.BENABELLA_FIREBASE_WORKSPACE || "benabella-realty";
+}
+
+function dataHasContent(data) {
+  return Boolean(
+    data.leads?.length ||
+    data.properties?.length ||
+    data.owners?.length ||
+    data.visits?.length ||
+    data.deals?.length ||
+    data.socialPosts?.length ||
+    data.socialAccounts?.length
+  );
+}
+
+function initializeFirebaseCloud() {
+  if (!firebaseConfigAvailable() || typeof firebase === "undefined") {
+    renderSync();
+    return;
+  }
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(window.BENABELLA_FIREBASE_CONFIG);
+    firebaseDb = firebase.firestore();
+    firebaseAuth = firebase.auth();
+    firebaseAuth.onAuthStateChanged((user) => {
+      firebaseUser = user;
+      if (firebaseUnsubscribe) {
+        firebaseUnsubscribe();
+        firebaseUnsubscribe = null;
+      }
+      if (user) startFirebaseListener();
+      renderSync();
+    });
+  } catch {
+    showToast("Firebase could not start");
+  }
+}
+
+function startFirebaseListener() {
+  firebaseDocRef = firebaseDb.collection("crmWorkspaces").doc(firebaseWorkspace());
+  firebaseUnsubscribe = firebaseDocRef.onSnapshot((snapshot) => {
+    if (snapshot.exists && snapshot.data()?.data) {
+      suppressFirebaseSave = true;
+      state = snapshot.data().data;
+      normalizeState();
+      saveState();
+      suppressFirebaseSave = false;
+      render();
+      return;
+    }
+    if (dataHasContent(state)) writeFirebaseState(false);
+  }, () => {
+    showToast("Firebase cloud read blocked");
+  });
+}
+
+function scheduleFirebaseSave() {
+  if (suppressFirebaseSave || !firebaseUser || !firebaseDocRef) return;
+  clearTimeout(firebaseSaveTimer);
+  firebaseSaveTimer = setTimeout(() => {
+    writeFirebaseState(false);
+  }, 800);
+}
+
+async function writeFirebaseState(showMessage = true) {
+  if (!firebaseUser || !firebaseDocRef) {
+    if (showMessage) showToast("Log in to Firebase cloud first");
+    return;
+  }
+  try {
+    await firebaseDocRef.set({
+      data: state,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: firebaseUser.email || firebaseUser.uid
+    }, { merge: true });
+    if (showMessage) showToast("Saved to Firebase cloud");
+  } catch {
+    if (showMessage) showToast("Firebase save blocked");
+  }
+}
+
 function cloudHeaders() {
   return {
     "Content-Type": "application/json",
@@ -1910,6 +2019,23 @@ document.querySelector("#sync-form").addEventListener("submit", async (event) =>
   await pullCloudState(true);
 });
 
+document.querySelector("#firebase-login-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!firebaseAuth) {
+    showToast("Add Firebase config first");
+    return;
+  }
+  const email = document.querySelector("#firebase-email").value.trim();
+  const password = document.querySelector("#firebase-password").value;
+  try {
+    await firebaseAuth.signInWithEmailAndPassword(email, password);
+    document.querySelector("#firebase-password").value = "";
+    showToast("Firebase cloud logged in");
+  } catch {
+    showToast("Firebase login failed");
+  }
+});
+
 document.addEventListener("click", async (event) => {
   const syncPush = event.target.closest("[data-sync-push]");
   if (syncPush) {
@@ -1937,6 +2063,17 @@ document.addEventListener("click", async (event) => {
     saveSyncConfig();
     renderSync();
     showToast("Cloud sync disconnected");
+  }
+
+  const firebaseSave = event.target.closest("[data-firebase-save]");
+  if (firebaseSave) {
+    await writeFirebaseState(true);
+  }
+
+  const firebaseLogout = event.target.closest("[data-firebase-logout]");
+  if (firebaseLogout && firebaseAuth) {
+    await firebaseAuth.signOut();
+    showToast("Firebase cloud logged out");
   }
 });
 
@@ -2123,4 +2260,5 @@ document.addEventListener("submit", (event) => {
 });
 
 render();
+initializeFirebaseCloud();
 if (cloudSync.enabled) pullCloudState(false);
