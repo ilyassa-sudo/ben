@@ -7,6 +7,13 @@ const storageKey = "benabella-crm-team-v1";
 const syncConfigKey = "benabella-crm-sync-v1";
 const legacyStorageKeys = ["benabella-crm", "benabella-crm-empty-v1"];
 const defaultCommissionPercent = 5;
+const defaultSocialSync = {
+  endpoint: "",
+  enabled: false,
+  lastSync: "Never",
+  status: "Not connected",
+  intervalMinutes: 60
+};
 const cloneData = (value) => {
   if (typeof structuredClone === "function") return structuredClone(value);
   return JSON.parse(JSON.stringify(value));
@@ -31,7 +38,8 @@ const emptyData = {
   visits: [],
   deals: [],
   socialPosts: [],
-  socialAccounts: []
+  socialAccounts: [],
+  socialSync: cloneData(defaultSocialSync)
 };
 
 const sourceQuality = {
@@ -338,6 +346,8 @@ let firebaseUser = null;
 let firebaseDocRef = null;
 let firebaseUnsubscribe = null;
 let firebaseSaveTimer = null;
+let socialAutoSyncTimer = null;
+let socialAutoSyncSignature = "";
 let suppressFirebaseSave = true;
 let state = loadState();
 normalizeState();
@@ -420,15 +430,124 @@ function exportDataBackup() {
   URL.revokeObjectURL(url);
 }
 
+function normalizeImportedData(data) {
+  const currentState = state;
+  state = { ...cloneData(emptyData), ...cloneData(data) };
+  normalizeState();
+  const imported = cloneData(state);
+  state = currentState;
+  return imported;
+}
+
+function hasCrmData(data) {
+  return Boolean(
+    data.leads?.length ||
+    data.properties?.length ||
+    data.owners?.length ||
+    data.visits?.length ||
+    data.deals?.length ||
+    data.socialPosts?.length ||
+    data.socialAccounts?.length
+  );
+}
+
+function cleanPhone(value) {
+  return String(value || "").replace(/[^\d+]/g, "");
+}
+
+function addImportedItem(collection, item, duplicate) {
+  if (duplicate) return duplicate.id;
+  const copy = cloneData(item);
+  const usedIds = new Set(collection.map((entry) => Number(entry.id)));
+  if (!copy.id || usedIds.has(Number(copy.id))) copy.id = nextId(collection);
+  collection.push(copy);
+  return copy.id;
+}
+
+function mergeImportedData(current, incoming) {
+  const merged = cloneData(current);
+  const ownerMap = new Map();
+  const propertyMap = new Map();
+  const leadMap = new Map();
+
+  incoming.owners.forEach((owner) => {
+    const ownerPhone = cleanPhone(owner.phone);
+    const duplicate = merged.owners.find((item) =>
+      ownerPhone ? cleanPhone(item.phone) === ownerPhone : item.name?.toLowerCase() === owner.name?.toLowerCase()
+    );
+    ownerMap.set(owner.id, addImportedItem(merged.owners, owner, duplicate));
+  });
+
+  incoming.properties.forEach((property) => {
+    const key = `${property.title}|${property.area}|${property.price}`.toLowerCase();
+    const duplicate = merged.properties.find((item) => `${item.title}|${item.area}|${item.price}`.toLowerCase() === key);
+    const copy = cloneData(property);
+    copy.ownerId = ownerMap.get(property.ownerId) || property.ownerId || merged.owners[0]?.id || null;
+    propertyMap.set(property.id, addImportedItem(merged.properties, copy, duplicate));
+  });
+
+  incoming.leads.forEach((lead) => {
+    const leadPhone = cleanPhone(lead.phone);
+    const fallback = `${lead.name}|${lead.budget}|${lead.requirement?.area || ""}`.toLowerCase();
+    const duplicate = merged.leads.find((item) =>
+      leadPhone ? cleanPhone(item.phone) === leadPhone : `${item.name}|${item.budget}|${item.requirement?.area || ""}`.toLowerCase() === fallback
+    );
+    const copy = cloneData(lead);
+    copy.propertyId = propertyMap.get(lead.propertyId) || lead.propertyId || null;
+    leadMap.set(lead.id, addImportedItem(merged.leads, copy, duplicate));
+  });
+
+  incoming.visits.forEach((visit) => {
+    const copy = cloneData(visit);
+    copy.leadId = leadMap.get(visit.leadId) || visit.leadId;
+    copy.propertyId = propertyMap.get(visit.propertyId) || visit.propertyId;
+    const duplicate = merged.visits.find((item) =>
+      item.leadId === copy.leadId && item.propertyId === copy.propertyId && item.date === copy.date && item.time === copy.time
+    );
+    addImportedItem(merged.visits, copy, duplicate);
+  });
+
+  incoming.deals.forEach((deal) => {
+    const copy = cloneData(deal);
+    copy.leadId = leadMap.get(deal.leadId) || deal.leadId;
+    copy.propertyId = propertyMap.get(deal.propertyId) || deal.propertyId;
+    const duplicate = merged.deals.find((item) =>
+      item.leadId === copy.leadId && item.propertyId === copy.propertyId && item.stage === copy.stage
+    );
+    addImportedItem(merged.deals, copy, duplicate);
+  });
+
+  incoming.socialPosts.forEach((post) => {
+    const copy = cloneData(post);
+    copy.propertyId = propertyMap.get(post.propertyId) || post.propertyId;
+    const duplicate = merged.socialPosts.find((item) =>
+      item.platform === copy.platform && item.propertyId === copy.propertyId && item.date === copy.date && item.type === copy.type
+    );
+    addImportedItem(merged.socialPosts, copy, duplicate);
+  });
+
+  incoming.socialAccounts.forEach((account) => {
+    const duplicate = merged.socialAccounts.find((item) =>
+      item.platform === account.platform && item.name?.toLowerCase() === account.name?.toLowerCase()
+    );
+    addImportedItem(merged.socialAccounts, account, duplicate);
+  });
+
+  merged.selectedLeadId = merged.selectedLeadId || leadMap.get(incoming.selectedLeadId) || merged.leads[0]?.id || null;
+  merged.selectedPropertyId = merged.selectedPropertyId || propertyMap.get(incoming.selectedPropertyId) || merged.properties[0]?.id || null;
+  return merged;
+}
+
 function importDataBackup(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      state = JSON.parse(reader.result);
+      const imported = normalizeImportedData(JSON.parse(reader.result));
+      state = hasCrmData(state) ? mergeImportedData(state, imported) : imported;
       normalizeState();
       saveState();
-      showToast("Backup imported");
+      showToast("Backup imported safely");
       render();
     } catch {
       showToast("Backup file not valid");
@@ -480,6 +599,10 @@ function normalizeState() {
   state.deals = Array.isArray(state.deals) ? state.deals : cloneData(emptyData.deals);
   if (!Array.isArray(state.socialPosts)) state.socialPosts = cloneData(emptyData.socialPosts);
   if (!Array.isArray(state.socialAccounts)) state.socialAccounts = cloneData(emptyData.socialAccounts);
+  state.socialSync = { ...cloneData(defaultSocialSync), ...(state.socialSync || {}) };
+  state.socialSync.enabled = Boolean(state.socialSync.enabled);
+  state.socialSync.endpoint = state.socialSync.endpoint || "";
+  state.socialSync.intervalMinutes = Math.max(15, Number(state.socialSync.intervalMinutes) || defaultSocialSync.intervalMinutes);
 
   state.leads.forEach((lead) => {
     const requirement = lead.requirement || {};
@@ -559,11 +682,15 @@ function normalizeState() {
     post.type = post.type || "Listing";
     post.date = post.date || shift(0);
     post.status = post.status || "Scheduled";
+    post.externalId = post.externalId || "";
+    post.url = post.url || "";
     post.caption = post.caption || socialCaption(propertyById(post.propertyId) || state.properties[0], post.platform, post.type);
     post.metrics = {
       views: Number(post.metrics?.views) || 0,
       likes: Number(post.metrics?.likes) || 0,
       comments: Number(post.metrics?.comments) || 0,
+      shares: Number(post.metrics?.shares) || 0,
+      saves: Number(post.metrics?.saves) || 0,
       messages: Number(post.metrics?.messages) || 0,
       leads: Number(post.metrics?.leads) || 0
     };
@@ -633,6 +760,7 @@ function render() {
   renderVisits();
   renderCommission();
   renderAnalytics();
+  configureSocialAutoSync();
 }
 
 function renderToday() {
@@ -1084,6 +1212,7 @@ function renderSocial() {
     <option value="${property.id}">${property.title}</option>
   `).join("");
   if (!document.querySelector("#social-date").value) document.querySelector("#social-date").value = todayIso;
+  renderSocialSync();
   renderSocialAccounts();
 
   document.querySelector("#social-metrics").innerHTML = [
@@ -1093,6 +1222,8 @@ function renderSocial() {
     ["Published this week", publishedWeek],
     ["Posts today", scheduledToday],
     ["Total likes", totalLikes.toLocaleString("fr-MA")],
+    ["Shares", posts.reduce((total, post) => total + post.metrics.shares, 0).toLocaleString("fr-MA")],
+    ["Saves", posts.reduce((total, post) => total + post.metrics.saves, 0).toLocaleString("fr-MA")],
     ["Messages", totalMessages],
     ["Leads", totalLeads],
     ["Best platform", bestPlatformName || "None"]
@@ -1117,6 +1248,9 @@ function renderSocial() {
         <div class="social-stats">
           <span><strong>${post.metrics.views}</strong> views</span>
           <span><strong>${post.metrics.likes}</strong> likes</span>
+          <span><strong>${post.metrics.comments}</strong> comments</span>
+          <span><strong>${post.metrics.shares}</strong> shares</span>
+          <span><strong>${post.metrics.saves}</strong> saves</span>
           <span><strong>${post.metrics.messages}</strong> messages</span>
           <span><strong>${post.metrics.leads}</strong> leads</span>
         </div>
@@ -1124,6 +1258,8 @@ function renderSocial() {
           <label>Views<input name="views" type="number" min="0" value="${post.metrics.views}" /></label>
           <label>Likes<input name="likes" type="number" min="0" value="${post.metrics.likes}" /></label>
           <label>Comments<input name="comments" type="number" min="0" value="${post.metrics.comments}" /></label>
+          <label>Shares<input name="shares" type="number" min="0" value="${post.metrics.shares}" /></label>
+          <label>Saves<input name="saves" type="number" min="0" value="${post.metrics.saves}" /></label>
           <label>Messages<input name="messages" type="number" min="0" value="${post.metrics.messages}" /></label>
           <label>Leads<input name="leads" type="number" min="0" value="${post.metrics.leads}" /></label>
           <button class="ghost-action" type="submit">Save</button>
@@ -1136,6 +1272,21 @@ function renderSocial() {
       </article>
     `;
   }).join("");
+}
+
+function renderSocialSync() {
+  const endpointInput = document.querySelector("#social-sync-endpoint");
+  const enabledInput = document.querySelector("#social-sync-enabled");
+  const intervalInput = document.querySelector("#social-sync-interval");
+  const status = document.querySelector("#social-sync-status");
+  if (!endpointInput || !enabledInput || !intervalInput || !status) return;
+
+  endpointInput.value = state.socialSync.endpoint || "";
+  enabledInput.checked = Boolean(state.socialSync.enabled);
+  intervalInput.value = state.socialSync.intervalMinutes || 60;
+  status.textContent = state.socialSync.enabled && state.socialSync.endpoint
+    ? `${state.socialSync.status || "Automatic tracking ready"} · Last sync ${state.socialSync.lastSync || "Never"}`
+    : "Not connected";
 }
 
 function renderSocialAccounts() {
@@ -1154,6 +1305,8 @@ function renderSocialAccounts() {
         <span><strong>${signedNumber(growth)}</strong> growth</span>
         <span><strong>${stats.posts}</strong> posts</span>
         <span><strong>${stats.likes.toLocaleString("fr-MA")}</strong> likes</span>
+        <span><strong>${stats.shares.toLocaleString("fr-MA")}</strong> shares</span>
+        <span><strong>${stats.saves.toLocaleString("fr-MA")}</strong> saves</span>
         <span><strong>${stats.messages}</strong> messages</span>
         <span><strong>${stats.leads}</strong> leads</span>
       </div>
@@ -1577,6 +1730,8 @@ function socialPlatformStats(posts) {
       views: platformPosts.reduce((total, post) => total + post.metrics.views, 0),
       likes: platformPosts.reduce((total, post) => total + post.metrics.likes, 0),
       comments: platformPosts.reduce((total, post) => total + post.metrics.comments, 0),
+      shares: platformPosts.reduce((total, post) => total + post.metrics.shares, 0),
+      saves: platformPosts.reduce((total, post) => total + post.metrics.saves, 0),
       messages: platformPosts.reduce((total, post) => total + post.metrics.messages, 0),
       leads: platformPosts.reduce((total, post) => total + post.metrics.leads, 0)
     };
@@ -1584,8 +1739,8 @@ function socialPlatformStats(posts) {
 }
 
 function bestSocialPlatform(stats) {
-  const best = [...stats].sort((a, b) => b.leads - a.leads || b.messages - a.messages || b.likes - a.likes || b.views - a.views || b.followers - a.followers)[0];
-  return best && (best.leads || best.messages || best.likes || best.views || best.followers || best.posts) ? best.platform : "";
+  const best = [...stats].sort((a, b) => b.leads - a.leads || b.messages - a.messages || b.saves - a.saves || b.shares - a.shares || b.likes - a.likes || b.views - a.views || b.followers - a.followers)[0];
+  return best && (best.leads || best.messages || best.saves || best.shares || best.likes || best.views || best.followers || best.posts) ? best.platform : "";
 }
 
 function socialStatsForPlatform(platform) {
@@ -1596,10 +1751,12 @@ function socialStatsForPlatform(platform) {
       stats.views += post.metrics.views;
       stats.likes += post.metrics.likes;
       stats.comments += post.metrics.comments;
+      stats.shares += post.metrics.shares;
+      stats.saves += post.metrics.saves;
       stats.messages += post.metrics.messages;
       stats.leads += post.metrics.leads;
       return stats;
-    }, { posts: 0, views: 0, likes: 0, comments: 0, messages: 0, leads: 0 });
+    }, { posts: 0, views: 0, likes: 0, comments: 0, shares: 0, saves: 0, messages: 0, leads: 0 });
 }
 
 function signedNumber(value) {
@@ -1614,9 +1771,121 @@ function renderSocialBars(selector, stats) {
       <span class="platform-pill ${item.platform.toLowerCase()}">${item.platform}</span>
       <div class="bar"><span style="width:${((item.views + item.likes + item.followers) / max) * 100}%"></span></div>
       <strong>${item.followers.toLocaleString("fr-MA")} followers</strong>
-      <small>${item.posts} posts · ${item.views.toLocaleString("fr-MA")} views · ${item.likes.toLocaleString("fr-MA")} likes · ${item.messages} messages · ${item.leads} leads</small>
+      <small>${item.posts} posts · ${item.views.toLocaleString("fr-MA")} views · ${item.likes.toLocaleString("fr-MA")} likes · ${item.shares.toLocaleString("fr-MA")} shares · ${item.saves.toLocaleString("fr-MA")} saves · ${item.messages} messages · ${item.leads} leads</small>
     </div>
   `).join("");
+}
+
+function metricValue(...values) {
+  return values.map((value) => Number(value)).find((value) => Number.isFinite(value) && value > 0) || 0;
+}
+
+function normalizeSocialMetrics(metrics = {}) {
+  return {
+    views: metricValue(metrics.views, metrics.view_count, metrics.play_count, metrics.reach, metrics.impressions),
+    likes: metricValue(metrics.likes, metrics.like_count),
+    comments: metricValue(metrics.comments, metrics.comment_count),
+    shares: metricValue(metrics.shares, metrics.share_count),
+    saves: metricValue(metrics.saves, metrics.saved, metrics.save_count),
+    messages: metricValue(metrics.messages, metrics.dm_count, metrics.replies),
+    leads: metricValue(metrics.leads, metrics.lead_count)
+  };
+}
+
+function findSocialAccount(account) {
+  return state.socialAccounts.find((item) =>
+    item.platform === account.platform && clean(item.name) === clean(account.name)
+  ) || state.socialAccounts.find((item) => item.platform === account.platform);
+}
+
+function applySocialPayload(payload) {
+  const accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
+  const posts = Array.isArray(payload.posts) ? payload.posts : [];
+
+  accounts.forEach((account) => {
+    const platform = account.platform || "Instagram";
+    const existing = findSocialAccount({ ...account, platform });
+    const currentFollowers = Number(existing?.followers) || 0;
+    const next = existing || {
+      id: nextId(state.socialAccounts),
+      platform,
+      name: account.name || (platform === "Facebook" ? "Benabella Realty" : "@benabellarealty")
+    };
+    next.name = account.name || next.name;
+    next.status = "Automatic";
+    next.lastSync = iso(today);
+    next.previousFollowers = Number(account.previousFollowers ?? account.previous_followers ?? next.previousFollowers ?? currentFollowers) || 0;
+    next.followers = Number(account.followers ?? account.follower_count ?? next.followers) || 0;
+    if (!existing) state.socialAccounts.push(next);
+  });
+
+  posts.forEach((post) => {
+    const platform = post.platform || "Instagram";
+    const externalId = post.externalId || post.external_id || post.id || "";
+    const property = propertyById(post.propertyId) || state.properties.find((item) => clean(item.title) === clean(post.propertyTitle));
+    const existing = externalId
+      ? state.socialPosts.find((item) => item.platform === platform && item.externalId === externalId)
+      : state.socialPosts.find((item) => item.platform === platform && item.date === post.date && item.type === post.type && item.caption === post.caption);
+    const next = existing || {
+      id: nextId(state.socialPosts),
+      platform,
+      propertyId: property?.id || state.properties[0]?.id || null,
+      agent: post.agent || "Ayoub",
+      type: post.type || "Post",
+      date: post.date || iso(today),
+      status: "Published",
+      caption: post.caption || ""
+    };
+    next.platform = platform;
+    next.externalId = externalId || next.externalId || "";
+    next.url = post.url || post.permalink || next.url || "";
+    next.propertyId = property?.id || next.propertyId || state.properties[0]?.id || null;
+    next.agent = post.agent || next.agent || "Ayoub";
+    next.type = post.type || next.type || "Post";
+    next.date = post.date || next.date || iso(today);
+    next.status = post.status || "Published";
+    next.caption = post.caption || next.caption || socialCaption(property || state.properties[0], platform, next.type);
+    next.metrics = normalizeSocialMetrics({ ...(next.metrics || {}), ...(post.metrics || post) });
+    if (!existing) state.socialPosts.push(next);
+  });
+}
+
+function configureSocialAutoSync() {
+  const signature = `${state.socialSync.enabled}|${state.socialSync.endpoint}|${state.socialSync.intervalMinutes}`;
+  if (signature === socialAutoSyncSignature) return;
+  socialAutoSyncSignature = signature;
+  clearInterval(socialAutoSyncTimer);
+  socialAutoSyncTimer = null;
+  if (!state.socialSync.enabled || !state.socialSync.endpoint) return;
+  syncSocialFromConnector(false);
+  socialAutoSyncTimer = setInterval(() => {
+    syncSocialFromConnector(false);
+  }, state.socialSync.intervalMinutes * 60000);
+}
+
+async function syncSocialFromConnector(showMessage = true) {
+  if (!state.socialSync.endpoint) {
+    if (showMessage) showToast("Add connector URL first");
+    return;
+  }
+  try {
+    state.socialSync.status = "Syncing";
+    renderSocialSync();
+    const response = await fetch(state.socialSync.endpoint, { cache: "no-store" });
+    if (!response.ok) throw new Error("connector failed");
+    applySocialPayload(await response.json());
+    state.socialSync.status = "Automatic tracking on";
+    state.socialSync.lastSync = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date());
+    normalizeState();
+    saveState();
+    render();
+    if (showMessage) showToast("Social numbers updated");
+  } catch {
+    state.socialSync.status = "Sync failed";
+    saveState();
+    renderSocialSync();
+    if (showMessage) showToast("Social connector failed");
+  }
 }
 
 function socialCaption(property, platform, type) {
@@ -1825,7 +2094,7 @@ async function pushCloudState(showMessage = true) {
   }
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const nav = event.target.closest(".nav-button");
   if (nav) {
     const page = document.querySelector(`#${nav.dataset.page}-page`);
@@ -1981,6 +2250,11 @@ document.addEventListener("click", (event) => {
     saveState();
     showToast(`${platform} connection prepared`);
     render();
+  }
+
+  const socialSyncNow = event.target.closest("[data-social-sync-now]");
+  if (socialSyncNow) {
+    await syncSocialFromConnector(true);
   }
 
   const resetAll = event.target.closest("[data-reset-all]");
@@ -2247,6 +2521,17 @@ document.querySelector("#social-account-form").addEventListener("submit", (event
   render();
 });
 
+document.querySelector("#social-sync-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  state.socialSync.endpoint = document.querySelector("#social-sync-endpoint").value.trim();
+  state.socialSync.enabled = document.querySelector("#social-sync-enabled").checked;
+  state.socialSync.intervalMinutes = Math.max(15, Number(document.querySelector("#social-sync-interval").value) || 60);
+  state.socialSync.status = state.socialSync.endpoint ? "Automatic tracking ready" : "Not connected";
+  saveState();
+  showToast("Social auto sync saved");
+  render();
+});
+
 document.querySelector("#social-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const property = propertyById(Number(document.querySelector("#social-property").value));
@@ -2267,7 +2552,7 @@ document.querySelector("#social-form").addEventListener("submit", (event) => {
     status: "Scheduled",
     goal: "Generate buyer leads",
     caption: socialCaption(property, platform, type),
-    metrics: { views: 0, likes: 0, comments: 0, messages: 0, leads: 0 }
+    metrics: { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, messages: 0, leads: 0 }
   });
   saveState();
   showToast("Social post added");
@@ -2284,6 +2569,8 @@ document.addEventListener("submit", (event) => {
       views: Number(formData.get("views")) || 0,
       likes: Number(formData.get("likes")) || 0,
       comments: Number(formData.get("comments")) || 0,
+      shares: Number(formData.get("shares")) || 0,
+      saves: Number(formData.get("saves")) || 0,
       messages: Number(formData.get("messages")) || 0,
       leads: Number(formData.get("leads")) || 0
     };

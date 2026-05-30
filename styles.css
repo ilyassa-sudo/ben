@@ -377,6 +377,14 @@ textarea {
   margin-bottom: 16px;
 }
 
+.social-sync-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) 140px 90px auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 12px;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -699,7 +707,7 @@ label {
 
 .social-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -722,8 +730,19 @@ label {
 .social-metrics-form,
 .social-account-metrics-form {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
+}
+
+.toggle-row {
+  min-height: 45px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
 }
 
 .social-actions {
@@ -1078,6 +1097,7 @@ label {
   .owner-form,
   .visit-form,
   .social-form,
+  .social-sync-form,
   .social-account-form,
   .social-metrics-form,
   .social-account-metrics-form,

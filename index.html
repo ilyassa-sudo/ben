@@ -271,8 +271,30 @@
           <div class="metric-grid" id="social-metrics"></div>
           <div class="connection-panel">
             <div>
+              <h3>Automatic Tracking</h3>
+              <p class="card-meta" id="social-sync-status">Not connected</p>
+            </div>
+            <form class="social-sync-form" id="social-sync-form">
+              <label class="wide-field">
+                Secure Connector URL
+                <input id="social-sync-endpoint" placeholder="https://..." />
+              </label>
+              <label>
+                Refresh Minutes
+                <input id="social-sync-interval" type="number" min="15" value="60" />
+              </label>
+              <label class="toggle-row">
+                <input id="social-sync-enabled" type="checkbox" />
+                Auto
+              </label>
+              <button class="ghost-action" type="submit">Save Auto Sync</button>
+              <button class="primary-action" data-social-sync-now type="button">Sync Now</button>
+            </form>
+          </div>
+          <div class="connection-panel">
+            <div>
               <h3>Connected Accounts</h3>
-              <p class="card-meta">Use this to track accounts now. Real automatic data needs a secure backend connection.</p>
+              <p class="card-meta">Instagram, TikTok, and Facebook accounts.</p>
             </div>
             <form class="social-account-form" id="social-account-form">
               <label>
@@ -481,7 +503,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260530-social-tracker"></script>
-    <script src="app.js?v=20260530-social-tracker"></script>
+    <script src="firebase-config.js?v=20260530-social-auto-final"></script>
+    <script src="app.js?v=20260530-social-auto-final"></script>
   </body>
 </html>
