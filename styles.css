@@ -807,6 +807,36 @@ label {
   margin-bottom: 10px;
 }
 
+.ai-connector {
+  border: 1px solid #d5bd79;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.ai-connector summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  font-weight: 900;
+}
+
+.ai-connector summary small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.ai-agent-settings-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 12px;
+}
+
 .ai-card-grid,
 .match-list,
 .match-board {
@@ -846,6 +876,20 @@ label {
   overflow: auto;
 }
 
+.agent-thread {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.agent-question-line {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf7;
+  padding: 10px;
+  color: var(--ink);
+}
+
 .mentor-prompts {
   display: flex;
   flex-wrap: wrap;
@@ -881,6 +925,13 @@ label {
   padding-left: 10px;
   color: var(--ink);
   line-height: 1.45;
+}
+
+.remote-ai-answer {
+  border: 1px solid #d5bd79;
+  border-radius: 8px;
+  background: #fffefb;
+  padding: 10px;
 }
 
 .agent-message {
@@ -1192,6 +1243,7 @@ label {
   .visit-form,
   .social-form,
   .social-sync-form,
+  .ai-agent-settings-form,
   .social-account-form,
   .social-metrics-form,
   .social-account-metrics-form,

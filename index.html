@@ -158,6 +158,24 @@
                   </select>
                 </label>
               </div>
+              <details class="ai-connector">
+                <summary>
+                  <span>Real AI Brain</span>
+                  <small id="ai-agent-status">Local CRM brain</small>
+                </summary>
+                <form class="ai-agent-settings-form" id="ai-agent-settings-form">
+                  <label class="wide-field">
+                    Secure AI Connector URL
+                    <input id="ai-agent-endpoint" placeholder="Paste Google Apps Script web app URL" />
+                  </label>
+                  <label class="toggle-row">
+                    <input id="ai-agent-enabled" type="checkbox" />
+                    Use real AI
+                  </label>
+                  <button class="ghost-action" type="submit">Save AI Brain</button>
+                </form>
+                <p class="card-meta">The OpenAI key stays private inside Google Apps Script, not in this public website.</p>
+              </details>
               <form class="ai-ask" id="ai-ask-form">
                 <textarea id="ai-question" placeholder="Ask the agent: What should we do today? Why are deals not closing? How do we get better owners? What should we post?"></textarea>
                 <button class="primary-action" type="submit">Ask Benabella AI</button>
@@ -536,7 +554,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260530-ai-property-evaluator"></script>
-    <script src="app.js?v=20260530-ai-property-evaluator"></script>
+    <script src="firebase-config.js?v=20260530-real-ai-agent"></script>
+    <script src="app.js?v=20260530-real-ai-agent"></script>
   </body>
 </html>

@@ -17,10 +17,22 @@ const defaultSocialSync = {
 const defaultAiAgent = {
   endpoint: "",
   enabled: false,
-  mode: "Sales Mentor",
+  mode: "COO Review",
   status: "Local CRM brain",
   messages: []
 };
+const aiAgentModes = ["COO Review", "Sales Manager", "Lead Manager", "Owner Growth", "Marketing", "Negotiation", "Agadir Market", "Closing Plan"];
+const benabellaAgentDoctrine = `
+You are the COO, Sales Manager, Lead Manager, and Growth Advisor of Benabella Realty in Agadir, Morocco.
+Your job is to increase revenue, increase serious buyers, increase quality owner inventory, increase visits, increase offers, close more transactions, and stop wasted time.
+Be direct, practical, and revenue-focused.
+Always answer the exact question first.
+Then give concrete next actions, scripts, risks, and CRM updates.
+Score buyers and owners by seriousness.
+Think about Agadir areas including Hay Mohammadi, Al Houda, Salam, Dakhla, Tilila, Charaf, Founty, Sonaba, Taddart, Ait Melloul, Bensergao, and Anza.
+Use MAD and Benabella Realty's default 5% commission.
+Do not give vague motivation. Give decisions and tasks.
+`;
 const cloneData = (value) => {
   if (typeof structuredClone === "function") return structuredClone(value);
   return JSON.parse(JSON.stringify(value));
@@ -613,7 +625,10 @@ function normalizeState() {
   state.socialSync.intervalMinutes = Math.max(15, Number(state.socialSync.intervalMinutes) || defaultSocialSync.intervalMinutes);
   state.aiAgent = { ...cloneData(defaultAiAgent), ...(state.aiAgent || {}) };
   state.aiAgent.messages = Array.isArray(state.aiAgent.messages) ? state.aiAgent.messages.slice(-20) : [];
-  state.aiAgent.mode = state.aiAgent.mode || "COO Review";
+  state.aiAgent.endpoint = state.aiAgent.endpoint || "";
+  state.aiAgent.enabled = Boolean(state.aiAgent.enabled);
+  state.aiAgent.status = state.aiAgent.status || defaultAiAgent.status;
+  state.aiAgent.mode = aiAgentModes.includes(state.aiAgent.mode) ? state.aiAgent.mode : "COO Review";
 
   state.leads.forEach((lead) => {
     const requirement = lead.requirement || {};
@@ -876,6 +891,7 @@ function renderAssistant() {
   const context = mentorContext();
   document.querySelector("#ai-command-center").innerHTML = commandCenterHtml(context);
   document.querySelector("#ai-agent-mode").value = state.aiAgent.mode || "COO Review";
+  renderAiAgentSettings();
   document.querySelector("#assistant-answer").innerHTML = agentChatHtml();
   document.querySelector("#ai-risk-board").innerHTML = riskBoardHtml(context);
   document.querySelector("#ai-lost-board").innerHTML = lostBoardHtml();
@@ -891,6 +907,18 @@ function renderAssistant() {
       </div>
     </article>
   `).join("");
+}
+
+function renderAiAgentSettings() {
+  const endpointInput = document.querySelector("#ai-agent-endpoint");
+  const enabledInput = document.querySelector("#ai-agent-enabled");
+  const status = document.querySelector("#ai-agent-status");
+  if (!endpointInput || !enabledInput || !status) return;
+  if (document.activeElement !== endpointInput) endpointInput.value = state.aiAgent.endpoint || "";
+  enabledInput.checked = Boolean(state.aiAgent.enabled);
+  status.textContent = state.aiAgent.enabled && state.aiAgent.endpoint
+    ? state.aiAgent.status || "Real AI ready"
+    : "Local CRM brain";
 }
 
 function renderLeads() {
@@ -1883,11 +1911,21 @@ function agentChatHtml() {
   if (!state.aiAgent.messages.length) {
     return agentResponseHtml("Give me the daily business review and the highest priority action.", state.aiAgent.mode || "COO Review");
   }
-  return state.aiAgent.messages.map((message) => `
-    <div class="agent-message ${message.role}">
-      <small>${message.role === "user" ? "You" : "Benabella AI Agent"} · ${message.mode || "COO Review"}</small>
-      ${message.role === "assistant" ? message.html : `<p>${escapeHtml(message.content)}</p>`}
-    </div>
+  const pairs = [];
+  for (let index = 0; index < state.aiAgent.messages.length; index += 2) {
+    const first = state.aiAgent.messages[index];
+    const second = state.aiAgent.messages[index + 1];
+    if (!first) continue;
+    const user = first.role === "user" ? first : second;
+    const assistant = first.role === "assistant" ? first : second;
+    pairs.push({ user, assistant });
+  }
+
+  return pairs.reverse().map(({ user, assistant }) => `
+    <article class="agent-thread">
+      ${user ? `<div class="agent-question-line"><strong>You asked:</strong> ${escapeHtml(user.content)}</div>` : ""}
+      ${assistant ? assistant.html : `<p class="card-meta">Thinking...</p>`}
+    </article>
   `).join("");
 }
 
@@ -1956,15 +1994,28 @@ function parsePropertyQuestion(question) {
   const priceMatch = raw.match(/(\d+(?:[.,]\d+)?)\s*(k|000|mad|dh|dirham|dirhams)/i);
   const surfaceMatch = raw.match(/(\d+(?:[.,]\d+)?)\s*(m2|m²|meter|metre|meters|metres|sqm|square)/i);
   const floorMatch = raw.match(/(\d+)(?:st|nd|rd|th)?\s*floor/i);
-  const hasPropertyTerms = /apartment|appartement|apt|flat|studio|villa|property|listing/i.test(raw);
+  const hasPropertyTerms = /apartment|appartment|appartement|apart|apt|flat|studio|villa|property|listing/i.test(raw);
   const hasMarketQuestion = /good|price|worth|market|sell|buy|deal|expensive|cheap|furnished|designed/i.test(raw);
   if (!hasPropertyTerms || !hasMarketQuestion) return null;
 
   const priceNumber = priceMatch ? Number(priceMatch[1].replace(",", ".")) : 0;
   const price = priceNumber && priceMatch?.[2]?.toLowerCase() === "k" ? priceNumber * 1000 : priceNumber;
   const surface = surfaceMatch ? Number(surfaceMatch[1].replace(",", ".")) : 0;
-  const area = ["hay mohammadi", "al marwa", "founty", "sonaba", "salam", "dakhla", "tilila", "charaf", "taddart", "ait melloul", "bensergao", "anza"]
-    .find((name) => text.includes(name)) || "Agadir";
+  const areaAliases = [
+    ["Al Marwa, Hay Mohammadi", ["al marwa", "marwa"]],
+    ["Hay Mohammadi", ["hay mohammadi", "hay mohmadi", "mohammadi", "mohmadi"]],
+    ["Founty", ["founty"]],
+    ["Sonaba", ["sonaba"]],
+    ["Salam", ["salam"]],
+    ["Dakhla", ["dakhla"]],
+    ["Tilila", ["tilila"]],
+    ["Charaf", ["charaf"]],
+    ["Taddart", ["taddart"]],
+    ["Ait Melloul", ["ait melloul"]],
+    ["Bensergao", ["bensergao"]],
+    ["Anza", ["anza"]]
+  ];
+  const area = areaAliases.find(([, aliases]) => aliases.some((alias) => text.includes(alias)))?.[0] || "Agadir";
 
   if (!price && !surface) return null;
   return {
@@ -1979,18 +2030,20 @@ function parsePropertyQuestion(question) {
 
 function marketPropertyAnswerHtml(property, question, mode) {
   const pricePerM2 = property.price && property.surface ? Math.round(property.price / property.surface) : 0;
+  const areaText = clean(property.area);
+  const isHayMohammadiArea = areaText.includes("hay mohammadi") || areaText.includes("mohmadi") || areaText.includes("al marwa");
   let verdict = "Potentially good, but verify the building, title, elevator, parking, and comparable sales before accepting the owner price.";
   let listingScore = 55;
   const actions = [];
 
   if (pricePerM2) {
-    if (property.area.includes("hay mohammadi") && pricePerM2 <= 10500) {
+    if (isHayMohammadiArea && pricePerM2 <= 10500) {
       verdict = "Good inventory candidate if the title is clean and the building is respected.";
       listingScore += 20;
-    } else if (property.area.includes("hay mohammadi") && pricePerM2 <= 12500) {
-      verdict = "Acceptable but not cheap. It needs strong photos/video and negotiation room.";
+    } else if (isHayMohammadiArea && pricePerM2 <= 12500) {
+      verdict = "Yes, it can be a good listing, but it is price-sensitive. At this price it needs elevator/clean building proof, strong photos/video, and negotiation room.";
       listingScore += 10;
-    } else if (property.area.includes("hay mohammadi")) {
+    } else if (isHayMohammadiArea) {
       verdict = "Probably expensive for fast resale unless the building, finishing, furniture, elevator, and location are excellent.";
       listingScore -= 5;
     }
@@ -1999,10 +2052,11 @@ function marketPropertyAnswerHtml(property, question, mode) {
   if (property.furnished) listingScore += 8;
   if (property.designed) listingScore += 7;
   if (property.floor && property.floor >= 3) actions.push("Confirm elevator. Third floor without elevator will reduce buyer demand.");
-  if (property.price) actions.push(`Do not market only at ${money(property.price)}. Try to negotiate owner target closer to ${money(property.price * 0.94)}-${money(property.price * 0.97)} if possible.`);
+  if (property.price) actions.push(`Do not accept only the owner's ${money(property.price)} number. Ask for the real lowest accepted price and try to create room around ${money(property.price * 0.94)}-${money(property.price * 0.97)} if possible.`);
   actions.push("Before accepting it as priority inventory, check title deed, syndic, building age, elevator, parking, sunlight, and exact street.");
   actions.push("Make one vertical video walkthrough and one carousel showing furniture/design, kitchen, salon, bedrooms, and building entrance.");
   actions.push("Target buyers looking for Hay Mohammadi / Al Marwa, 2-bedroom furnished apartment, ready-to-move.");
+  actions.push("Add it to the CRM with area, surface, floor, furnished status, documents, owner lowest price, and next repost date.");
 
   return `
     <div class="mentor-answer">
@@ -2020,6 +2074,10 @@ function marketPropertyAnswerHtml(property, question, mode) {
         <p>${Math.max(1, Math.min(100, listingScore))}/100. This is ${listingScore >= 75 ? "worth pushing hard" : listingScore >= 60 ? "worth testing with good content" : "not priority unless owner negotiates"}.</p>
       </div>
       <div class="mentor-section">
+        <strong>COO decision</strong>
+        <p>Take the listing if the owner is cooperative and documents are clean. Do not spend heavy marketing energy until elevator/building quality and lowest accepted price are confirmed.</p>
+      </div>
+      <div class="mentor-section">
         <strong>Next actions</strong>
         <ol>${actions.map((action) => `<li>${action}</li>`).join("")}</ol>
       </div>
@@ -2029,6 +2087,149 @@ function marketPropertyAnswerHtml(property, question, mode) {
       </div>
     </div>
   `;
+}
+
+function aiAgentPayload() {
+  const context = mentorContext();
+  return {
+    agency: "Benabella Realty",
+    location: "Agadir, Morocco",
+    currency: "MAD",
+    commissionPercent: defaultCommissionPercent,
+    metrics: agencyMetrics(context),
+    lostReasons: groupCount(state.leads.filter((lead) => lead.lostReason || lead.status === "Lost"), "lostReason"),
+    topMatches: bestLeadPropertyPairs().slice(0, 5).map((pair) => ({
+      lead: pair.lead.name,
+      property: pair.property.title,
+      score: pair.score,
+      reasons: pair.reasons
+    })),
+    leads: context.leads.slice(0, 40).map((lead) => ({
+      name: lead.name,
+      source: lead.source,
+      status: lead.status,
+      agent: lead.agent,
+      heatScore: scoreLead(lead),
+      seriousnessScore: buyerSeriousnessScore(lead),
+      area: lead.requirement?.area,
+      budget: budgetText(lead.requirement || {}),
+      rooms: lead.requirement?.rooms,
+      surface: lead.requirement?.surface,
+      timeline: lead.requirement?.timeline,
+      financing: lead.requirement?.financing,
+      lastReply: lead.lastReply,
+      followUp: lead.followUp
+    })),
+    owners: state.owners.slice(0, 40).map((owner) => ({
+      name: owner.name,
+      seriousnessScore: ownerSeriousnessScore(owner),
+      agreement: owner.agreement,
+      lastContact: owner.lastContact,
+      askingPrice: owner.askingPrice,
+      lowestPrice: owner.lowestPrice,
+      notes: owner.notes
+    })),
+    properties: context.properties.slice(0, 40).map((property) => {
+      const evaluation = propertyEvaluation(property);
+      return {
+        title: property.title,
+        type: property.type,
+        area: property.area,
+        price: property.price,
+        status: property.status,
+        features: property.features,
+        platforms: property.platforms,
+        nextRepost: property.nextRepost,
+        evaluationScore: evaluation.score,
+        demand: evaluation.demand
+      };
+    }),
+    social: {
+      accounts: state.socialAccounts,
+      posts: state.socialPosts.slice(0, 30)
+    }
+  };
+}
+
+function remoteAgentAnswerHtml(answer, mode) {
+  return `
+    <div class="mentor-answer remote-ai-answer">
+      <div class="mentor-section">
+        <span class="ai-label">Real AI · ${mode}</span>
+        <strong>Benabella AI Agent</strong>
+        <div>${agentTextToHtml(answer)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function agentTextToHtml(text) {
+  return escapeHtml(text)
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>");
+}
+
+async function callAiConnector(question, mode) {
+  const endpoint = state.aiAgent.endpoint.trim();
+  if (!endpoint) throw new Error("Missing AI connector URL");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      question,
+      mode,
+      doctrine: benabellaAgentDoctrine,
+      context: aiAgentPayload()
+    })
+  });
+  const data = await response.json();
+  if (!response.ok || data.error) throw new Error(data.error || "AI connector failed");
+  const answer = data.answer || data.output || data.text;
+  if (!answer) throw new Error("AI connector returned no answer");
+  return answer;
+}
+
+async function askAgent(question, mode) {
+  state.aiAgent.mode = mode;
+  state.aiAgent.messages.push({ role: "user", mode, content: question });
+  state.aiAgent.messages.push({ role: "assistant", mode, html: `<div class="mentor-answer"><div class="mentor-section"><strong>Thinking...</strong><p>Building a manager-level answer from the CRM.</p></div></div>` });
+  state.aiAgent.messages = state.aiAgent.messages.slice(-20);
+  saveState();
+  renderAssistant();
+
+  let answer = "";
+  try {
+    if (state.aiAgent.enabled && state.aiAgent.endpoint) {
+      answer = remoteAgentAnswerHtml(await callAiConnector(question, mode), mode);
+      state.aiAgent.status = "Real AI connected";
+    } else {
+      answer = agentResponseHtml(question, mode);
+      state.aiAgent.status = "Local CRM brain";
+    }
+  } catch (error) {
+    answer = `
+      <div class="mentor-answer">
+        <div class="mentor-section">
+          <span class="ai-label">Local fallback</span>
+          <strong>Real AI connector failed</strong>
+          <p>${escapeHtml(error.message)}. I answered with the built-in Benabella CRM brain instead.</p>
+        </div>
+        ${agentResponseHtml(question, mode)}
+      </div>
+    `;
+    state.aiAgent.status = "Real AI failed";
+    showToast(`AI connector failed: ${error.message}`);
+  }
+
+  const lastAssistant = [...state.aiAgent.messages].reverse().find((message) => message.role === "assistant");
+  if (lastAssistant) lastAssistant.html = answer;
+  state.aiAgent.messages = state.aiAgent.messages.slice(-20);
+  saveState();
+  renderAssistant();
+  requestAnimationFrame(() => {
+    const answerPanel = document.querySelector("#assistant-answer");
+    if (answerPanel) answerPanel.scrollTop = 0;
+  });
 }
 
 function askLocalAgent(question, mode) {
@@ -2721,7 +2922,7 @@ document.addEventListener("click", async (event) => {
     const question = mentorPrompt.dataset.mentorPrompt;
     const mode = document.querySelector("#ai-agent-mode")?.value || "COO Review";
     document.querySelector("#ai-question").value = question;
-    askLocalAgent(question, mode);
+    await askAgent(question, mode);
   }
 
   const clearAgentChat = event.target.closest("[data-clear-agent-chat]");
@@ -2829,12 +3030,22 @@ document.querySelector("#lead-form").addEventListener("submit", (event) => {
   render();
 });
 
-document.querySelector("#ai-ask-form").addEventListener("submit", (event) => {
+document.querySelector("#ai-ask-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const question = document.querySelector("#ai-question").value.trim() || "Give me the daily business review and the highest priority action.";
   const mode = document.querySelector("#ai-agent-mode").value;
-  askLocalAgent(question, mode);
+  await askAgent(question, mode);
   document.querySelector("#ai-question").value = "";
+});
+
+document.querySelector("#ai-agent-settings-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  state.aiAgent.endpoint = document.querySelector("#ai-agent-endpoint").value.trim();
+  state.aiAgent.enabled = document.querySelector("#ai-agent-enabled").checked;
+  state.aiAgent.status = state.aiAgent.enabled && state.aiAgent.endpoint ? "Real AI ready" : "Local CRM brain";
+  saveState();
+  renderAiAgentSettings();
+  showToast("AI brain saved");
 });
 
 document.querySelector("#sync-form").addEventListener("submit", async (event) => {
