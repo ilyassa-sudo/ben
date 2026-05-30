@@ -1702,6 +1702,17 @@ async function writeFirebaseState(showMessage = true) {
   }
 }
 
+function firebaseLoginError(error) {
+  const code = error?.code || "";
+  if (code.includes("auth/unauthorized-domain")) return "Firebase: add this GitHub domain";
+  if (code.includes("auth/invalid-credential")) return "Firebase: wrong email or password";
+  if (code.includes("auth/user-not-found")) return "Firebase: user not found";
+  if (code.includes("auth/wrong-password")) return "Firebase: wrong password";
+  if (code.includes("auth/operation-not-allowed")) return "Firebase: enable Email/Password";
+  if (code.includes("auth/network-request-failed")) return "Firebase: network blocked";
+  return `Firebase login failed${code ? `: ${code}` : ""}`;
+}
+
 function cloudHeaders() {
   return {
     "Content-Type": "application/json",
@@ -2047,8 +2058,8 @@ document.querySelector("#firebase-login-form").addEventListener("submit", async 
     await firebaseAuth.signInWithEmailAndPassword(email, password);
     document.querySelector("#firebase-password").value = "";
     showToast("Automatic sync is on");
-  } catch {
-    showToast("Firebase login failed");
+  } catch (error) {
+    showToast(firebaseLoginError(error));
   }
 });
 
