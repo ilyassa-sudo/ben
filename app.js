@@ -1894,6 +1894,8 @@ function agentChatHtml() {
 function agentResponseHtml(question, mode = "COO Review") {
   const context = mentorContext();
   const text = clean(`${mode} ${question}`);
+  const marketProperty = parsePropertyQuestion(question);
+  if (marketProperty) return marketPropertyAnswerHtml(marketProperty, question, mode);
   const actions = actionList(context, question).slice(0, 5);
   const metrics = agencyMetrics(context);
   const bestBuyer = context.hotLeads[0];
@@ -1943,6 +1945,87 @@ function agentResponseHtml(question, mode = "COO Review") {
       <div class="mentor-section">
         <strong>Message to send</strong>
         <p class="mentor-script">${mentorScript(context, question)}</p>
+      </div>
+    </div>
+  `;
+}
+
+function parsePropertyQuestion(question) {
+  const raw = String(question || "");
+  const text = clean(raw);
+  const priceMatch = raw.match(/(\d+(?:[.,]\d+)?)\s*(k|000|mad|dh|dirham|dirhams)/i);
+  const surfaceMatch = raw.match(/(\d+(?:[.,]\d+)?)\s*(m2|m²|meter|metre|meters|metres|sqm|square)/i);
+  const floorMatch = raw.match(/(\d+)(?:st|nd|rd|th)?\s*floor/i);
+  const hasPropertyTerms = /apartment|appartement|apt|flat|studio|villa|property|listing/i.test(raw);
+  const hasMarketQuestion = /good|price|worth|market|sell|buy|deal|expensive|cheap|furnished|designed/i.test(raw);
+  if (!hasPropertyTerms || !hasMarketQuestion) return null;
+
+  const priceNumber = priceMatch ? Number(priceMatch[1].replace(",", ".")) : 0;
+  const price = priceNumber && priceMatch?.[2]?.toLowerCase() === "k" ? priceNumber * 1000 : priceNumber;
+  const surface = surfaceMatch ? Number(surfaceMatch[1].replace(",", ".")) : 0;
+  const area = ["hay mohammadi", "al marwa", "founty", "sonaba", "salam", "dakhla", "tilila", "charaf", "taddart", "ait melloul", "bensergao", "anza"]
+    .find((name) => text.includes(name)) || "Agadir";
+
+  if (!price && !surface) return null;
+  return {
+    area,
+    price,
+    surface,
+    floor: floorMatch ? Number(floorMatch[1]) : null,
+    furnished: /furnished|meuble|meublé|furniture/i.test(raw),
+    designed: /designed|design|renovated|modern|good/i.test(raw)
+  };
+}
+
+function marketPropertyAnswerHtml(property, question, mode) {
+  const pricePerM2 = property.price && property.surface ? Math.round(property.price / property.surface) : 0;
+  let verdict = "Potentially good, but verify the building, title, elevator, parking, and comparable sales before accepting the owner price.";
+  let listingScore = 55;
+  const actions = [];
+
+  if (pricePerM2) {
+    if (property.area.includes("hay mohammadi") && pricePerM2 <= 10500) {
+      verdict = "Good inventory candidate if the title is clean and the building is respected.";
+      listingScore += 20;
+    } else if (property.area.includes("hay mohammadi") && pricePerM2 <= 12500) {
+      verdict = "Acceptable but not cheap. It needs strong photos/video and negotiation room.";
+      listingScore += 10;
+    } else if (property.area.includes("hay mohammadi")) {
+      verdict = "Probably expensive for fast resale unless the building, finishing, furniture, elevator, and location are excellent.";
+      listingScore -= 5;
+    }
+  }
+
+  if (property.furnished) listingScore += 8;
+  if (property.designed) listingScore += 7;
+  if (property.floor && property.floor >= 3) actions.push("Confirm elevator. Third floor without elevator will reduce buyer demand.");
+  if (property.price) actions.push(`Do not market only at ${money(property.price)}. Try to negotiate owner target closer to ${money(property.price * 0.94)}-${money(property.price * 0.97)} if possible.`);
+  actions.push("Before accepting it as priority inventory, check title deed, syndic, building age, elevator, parking, sunlight, and exact street.");
+  actions.push("Make one vertical video walkthrough and one carousel showing furniture/design, kitchen, salon, bedrooms, and building entrance.");
+  actions.push("Target buyers looking for Hay Mohammadi / Al Marwa, 2-bedroom furnished apartment, ready-to-move.");
+
+  return `
+    <div class="mentor-answer">
+      <div class="mentor-section">
+        <span class="ai-label">${mode}</span>
+        <strong>Direct property verdict</strong>
+        <p>${verdict}</p>
+      </div>
+      <div class="mentor-section">
+        <strong>Numbers</strong>
+        <p>Area: ${property.area}. Price: ${property.price ? money(property.price) : "not clear"}. Surface: ${property.surface || "not clear"} m2. ${pricePerM2 ? `Price per m2: ${money(pricePerM2)}.` : ""} Floor: ${property.floor || "not clear"}. Furnished/design value: ${property.furnished || property.designed ? "yes" : "not confirmed"}.</p>
+      </div>
+      <div class="mentor-section">
+        <strong>Inventory score</strong>
+        <p>${Math.max(1, Math.min(100, listingScore))}/100. This is ${listingScore >= 75 ? "worth pushing hard" : listingScore >= 60 ? "worth testing with good content" : "not priority unless owner negotiates"}.</p>
+      </div>
+      <div class="mentor-section">
+        <strong>Next actions</strong>
+        <ol>${actions.map((action) => `<li>${action}</li>`).join("")}</ol>
+      </div>
+      <div class="mentor-section">
+        <strong>Owner script</strong>
+        <p class="mentor-script">The apartment is attractive, but to sell fast we need the right market price. If we bring serious buyers quickly, what is your real lowest accepted price? Also send title deed, syndic details, and confirm elevator/parking so we can market it professionally.</p>
       </div>
     </div>
   `;
