@@ -78,7 +78,7 @@
             <div class="firebase-cloud-panel">
               <span class="ai-label">Free Automatic Cloud</span>
               <h3 id="firebase-status">Firebase not configured</h3>
-              <p class="card-meta" id="firebase-detail">Use Firebase Auth + Firestore for free shared CRM data on phone and computer.</p>
+              <p class="card-meta" id="firebase-detail">Log in once on each device. After that, changes sync automatically.</p>
               <form class="sync-form" id="firebase-login-form">
                 <label>
                   Email
@@ -95,6 +95,8 @@
                 <button class="danger-action" data-firebase-logout type="button">Log Out Cloud</button>
               </div>
             </div>
+            <details class="advanced-sync">
+              <summary>Advanced manual sync options</summary>
             <div>
               <span class="ai-label">Shared Database</span>
               <h3 id="sync-status">Local only</h3>
@@ -126,6 +128,7 @@
               </div>
             </div>
             <p class="card-meta">First connect on your PC and click “Push This Device”. Then connect on your phone and click “Pull Cloud Data”.</p>
+            </details>
           </div>
         </section>
 

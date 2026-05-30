@@ -11,6 +11,16 @@ const cloneData = (value) => {
   return JSON.parse(JSON.stringify(value));
 };
 
+const firebaseFallbackConfig = {
+  apiKey: "AIzaSyA_rpt0oLSkHxF0ET6u2TzaFdEnnUgMWJY",
+  authDomain: "benabella-realty-crm.firebaseapp.com",
+  projectId: "benabella-realty-crm",
+  storageBucket: "benabella-realty-crm.firebasestorage.app",
+  messagingSenderId: "1083366626031",
+  appId: "1:1083366626031:web:772dca8b7e6fb67011811a",
+  measurementId: "G-1NJPCM61M9"
+};
+
 const emptyData = {
   selectedLeadId: null,
   selectedPropertyId: null,
@@ -709,11 +719,11 @@ function renderSync() {
     firebaseStatus.textContent = "Firebase not configured";
     firebaseDetail.textContent = "Add your Firebase config once, then login here on phone and computer for automatic shared data.";
   } else if (firebaseUser) {
-    firebaseStatus.textContent = "Firebase cloud connected";
-    firebaseDetail.textContent = `Logged in as ${firebaseUser.email}. Data saves automatically to the shared CRM.`;
+    firebaseStatus.textContent = "Automatic sync is on";
+    firebaseDetail.textContent = `Logged in as ${firebaseUser.email}. Every change saves to the shared CRM automatically.`;
   } else {
-    firebaseStatus.textContent = "Firebase ready";
-    firebaseDetail.textContent = "Log in with the Firebase user you created for Benabella Realty.";
+    firebaseStatus.textContent = "Log in once to sync";
+    firebaseDetail.textContent = "Use the Firebase email/password you created. The browser will remember it.";
   }
 }
 
@@ -1600,12 +1610,17 @@ function scheduleCloudSave() {
 }
 
 function firebaseConfigAvailable() {
-  const config = window.BENABELLA_FIREBASE_CONFIG;
+  const config = getFirebaseConfig();
   return Boolean(config?.apiKey && config?.projectId && config?.authDomain);
 }
 
 function firebaseWorkspace() {
   return window.BENABELLA_FIREBASE_WORKSPACE || "benabella-realty";
+}
+
+function getFirebaseConfig() {
+  const config = window.BENABELLA_FIREBASE_CONFIG || {};
+  return config.apiKey ? config : firebaseFallbackConfig;
 }
 
 function dataHasContent(data) {
@@ -1626,9 +1641,10 @@ function initializeFirebaseCloud() {
     return;
   }
   try {
-    if (!firebase.apps.length) firebase.initializeApp(window.BENABELLA_FIREBASE_CONFIG);
+    if (!firebase.apps.length) firebase.initializeApp(getFirebaseConfig());
     firebaseDb = firebase.firestore();
     firebaseAuth = firebase.auth();
+    firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     firebaseAuth.onAuthStateChanged((user) => {
       firebaseUser = user;
       if (firebaseUnsubscribe) {
@@ -2030,7 +2046,7 @@ document.querySelector("#firebase-login-form").addEventListener("submit", async 
   try {
     await firebaseAuth.signInWithEmailAndPassword(email, password);
     document.querySelector("#firebase-password").value = "";
-    showToast("Firebase cloud logged in");
+    showToast("Automatic sync is on");
   } catch {
     showToast("Firebase login failed");
   }
