@@ -6,6 +6,7 @@ const money = (value) => `${Math.round(value).toLocaleString("fr-MA")} MAD`;
 const storageKey = "benabella-crm-team-v1";
 const syncConfigKey = "benabella-crm-sync-v1";
 const legacyStorageKeys = ["benabella-crm", "benabella-crm-empty-v1"];
+const defaultCommissionPercent = 5;
 const cloneData = (value) => {
   if (typeof structuredClone === "function") return structuredClone(value);
   return JSON.parse(JSON.stringify(value));
@@ -191,7 +192,7 @@ const defaultData = {
       agent: "Ayoub",
       status: "Available",
       ownerId: 1,
-      commission: { type: "percentage", value: 2.5 },
+      commission: { type: "percentage", value: defaultCommissionPercent },
       lastPosted: shift(-7),
       nextRepost: shift(0),
       platforms: ["Avito", "Facebook", "Instagram", "TikTok"],
@@ -322,9 +323,9 @@ const defaultData = {
     }
   ],
   socialAccounts: [
-    { id: 1, platform: "Instagram", name: "@benabellarealty", status: "Manual tracking", lastSync: "Not connected" },
-    { id: 2, platform: "TikTok", name: "@benabellarealty", status: "Manual tracking", lastSync: "Not connected" },
-    { id: 3, platform: "Facebook", name: "Benabella Realty", status: "Manual tracking", lastSync: "Not connected" }
+    { id: 1, platform: "Instagram", name: "@benabellarealty", status: "Manual tracking", lastSync: "Not connected", followers: 0, previousFollowers: 0 },
+    { id: 2, platform: "TikTok", name: "@benabellarealty", status: "Manual tracking", lastSync: "Not connected", followers: 0, previousFollowers: 0 },
+    { id: 3, platform: "Facebook", name: "Benabella Realty", status: "Manual tracking", lastSync: "Not connected", followers: 0, previousFollowers: 0 }
   ]
 };
 
@@ -516,7 +517,10 @@ function normalizeState() {
     property.agent = property.agent || "Ayoub";
     property.status = property.status || "Available";
     property.ownerId = property.ownerId || state.owners[0]?.id || 1;
-    property.commission = property.commission || { type: "percentage", value: 2.5 };
+    property.commission = property.commission || { type: "percentage", value: defaultCommissionPercent };
+    if (property.commission.type === "percentage" && Number(property.commission.value) === 2.5) {
+      property.commission.value = defaultCommissionPercent;
+    }
     property.lastPosted = property.lastPosted || shift(-7);
     property.nextRepost = property.nextRepost || shift(0);
     property.platforms = Array.isArray(property.platforms) ? property.platforms : ["Facebook", "Instagram"];
@@ -570,6 +574,8 @@ function normalizeState() {
     account.name = account.name || "@account";
     account.status = account.status || "Manual tracking";
     account.lastSync = account.lastSync || "Not connected";
+    account.followers = Number(account.followers) || 0;
+    account.previousFollowers = Number(account.previousFollowers) || 0;
   });
 }
 
@@ -1065,6 +1071,10 @@ function renderSocial() {
   const todayIso = iso(today);
   const scheduledToday = posts.filter((post) => post.date === todayIso && post.status !== "Published").length;
   const publishedWeek = posts.filter((post) => post.status === "Published" && daysSince(post.date) <= 7).length;
+  const totalPosts = posts.length;
+  const totalFollowers = state.socialAccounts.reduce((total, account) => total + account.followers, 0);
+  const followerGrowth = state.socialAccounts.reduce((total, account) => total + (account.followers - account.previousFollowers), 0);
+  const totalLikes = posts.reduce((total, post) => total + post.metrics.likes, 0);
   const totalMessages = posts.reduce((total, post) => total + post.metrics.messages, 0);
   const totalLeads = posts.reduce((total, post) => total + post.metrics.leads, 0);
   const platformStats = socialPlatformStats(posts);
@@ -1077,10 +1087,14 @@ function renderSocial() {
   renderSocialAccounts();
 
   document.querySelector("#social-metrics").innerHTML = [
-    ["Posts today", scheduledToday],
+    ["Total followers", totalFollowers.toLocaleString("fr-MA")],
+    ["Growth this week", signedNumber(followerGrowth)],
+    ["Total posts", totalPosts],
     ["Published this week", publishedWeek],
-    ["Messages from posts", totalMessages],
-    ["Leads from posts", totalLeads],
+    ["Posts today", scheduledToday],
+    ["Total likes", totalLikes.toLocaleString("fr-MA")],
+    ["Messages", totalMessages],
+    ["Leads", totalLeads],
     ["Best platform", bestPlatformName || "None"]
   ].map(([label, value]) => metric(label, value)).join("");
 
@@ -1125,16 +1139,33 @@ function renderSocial() {
 }
 
 function renderSocialAccounts() {
-  document.querySelector("#social-account-grid").innerHTML = state.socialAccounts.length ? state.socialAccounts.map((account) => `
-    <article class="account-card">
+  document.querySelector("#social-account-grid").innerHTML = state.socialAccounts.length ? state.socialAccounts.map((account) => {
+    const stats = socialStatsForPlatform(account.platform);
+    const growth = account.followers - account.previousFollowers;
+    return `
+    <article class="account-card social-account-card">
       <div>
         <span class="platform-pill ${account.platform.toLowerCase()}">${account.platform}</span>
         <strong>${account.name}</strong>
         <p class="card-meta">${account.status} · ${account.lastSync}</p>
       </div>
+      <div class="social-stats account-stats">
+        <span><strong>${account.followers.toLocaleString("fr-MA")}</strong> followers</span>
+        <span><strong>${signedNumber(growth)}</strong> growth</span>
+        <span><strong>${stats.posts}</strong> posts</span>
+        <span><strong>${stats.likes.toLocaleString("fr-MA")}</strong> likes</span>
+        <span><strong>${stats.messages}</strong> messages</span>
+        <span><strong>${stats.leads}</strong> leads</span>
+      </div>
+      <form class="social-account-metrics-form" data-social-account-metrics="${account.id}">
+        <label>Followers Now<input name="followers" type="number" min="0" value="${account.followers}" /></label>
+        <label>Last Week<input name="previousFollowers" type="number" min="0" value="${account.previousFollowers}" /></label>
+        <button class="ghost-action" type="submit">Save Numbers</button>
+      </form>
       <button class="danger-action small" data-delete-social-account="${account.id}" type="button">Delete</button>
     </article>
-  `).join("") : `<p class="card-meta">No accounts saved yet.</p>`;
+  `;
+  }).join("") : `<p class="card-meta">No accounts saved yet.</p>`;
 }
 
 function renderCommission() {
@@ -1221,7 +1252,7 @@ function marketingText(property, language) {
 }
 
 function commissionText(property) {
-  const commission = property.commission || { type: "percentage", value: 2.5 };
+  const commission = property.commission || { type: "percentage", value: defaultCommissionPercent };
   if (commission.type === "fixed") return money(commission.value);
   return `${commission.value || 0}%`;
 }
@@ -1537,10 +1568,15 @@ function renderDonut(selector, groups) {
 function socialPlatformStats(posts) {
   return ["Instagram", "TikTok", "Facebook"].map((platform) => {
     const platformPosts = posts.filter((post) => post.platform === platform);
+    const account = state.socialAccounts.find((item) => item.platform === platform);
     return {
       platform,
+      followers: Number(account?.followers) || 0,
+      growth: (Number(account?.followers) || 0) - (Number(account?.previousFollowers) || 0),
       posts: platformPosts.length,
       views: platformPosts.reduce((total, post) => total + post.metrics.views, 0),
+      likes: platformPosts.reduce((total, post) => total + post.metrics.likes, 0),
+      comments: platformPosts.reduce((total, post) => total + post.metrics.comments, 0),
       messages: platformPosts.reduce((total, post) => total + post.metrics.messages, 0),
       leads: platformPosts.reduce((total, post) => total + post.metrics.leads, 0)
     };
@@ -1548,18 +1584,37 @@ function socialPlatformStats(posts) {
 }
 
 function bestSocialPlatform(stats) {
-  const best = [...stats].sort((a, b) => b.leads - a.leads || b.messages - a.messages || b.views - a.views)[0];
-  return best && (best.leads || best.messages || best.views || best.posts) ? best.platform : "";
+  const best = [...stats].sort((a, b) => b.leads - a.leads || b.messages - a.messages || b.likes - a.likes || b.views - a.views || b.followers - a.followers)[0];
+  return best && (best.leads || best.messages || best.likes || best.views || best.followers || best.posts) ? best.platform : "";
+}
+
+function socialStatsForPlatform(platform) {
+  return state.socialPosts
+    .filter((post) => post.platform === platform)
+    .reduce((stats, post) => {
+      stats.posts += 1;
+      stats.views += post.metrics.views;
+      stats.likes += post.metrics.likes;
+      stats.comments += post.metrics.comments;
+      stats.messages += post.metrics.messages;
+      stats.leads += post.metrics.leads;
+      return stats;
+    }, { posts: 0, views: 0, likes: 0, comments: 0, messages: 0, leads: 0 });
+}
+
+function signedNumber(value) {
+  const number = Number(value) || 0;
+  return `${number > 0 ? "+" : ""}${number.toLocaleString("fr-MA")}`;
 }
 
 function renderSocialBars(selector, stats) {
-  const max = Math.max(...stats.map((item) => item.views), 1);
+  const max = Math.max(...stats.map((item) => item.views + item.likes + item.followers), 1);
   document.querySelector(selector).innerHTML = stats.map((item) => `
     <div class="social-bar-row">
       <span class="platform-pill ${item.platform.toLowerCase()}">${item.platform}</span>
-      <div class="bar"><span style="width:${(item.views / max) * 100}%"></span></div>
-      <strong>${item.views.toLocaleString("fr-MA")} views</strong>
-      <small>${item.messages} messages · ${item.leads} leads</small>
+      <div class="bar"><span style="width:${((item.views + item.likes + item.followers) / max) * 100}%"></span></div>
+      <strong>${item.followers.toLocaleString("fr-MA")} followers</strong>
+      <small>${item.posts} posts · ${item.views.toLocaleString("fr-MA")} views · ${item.likes.toLocaleString("fr-MA")} likes · ${item.messages} messages · ${item.leads} leads</small>
     </div>
   `).join("");
 }
@@ -1918,7 +1973,9 @@ document.addEventListener("click", (event) => {
         platform,
         name: platform === "Facebook" ? "Benabella Realty" : "@benabellarealty",
         status: "Secure connection needed",
-        lastSync: "Waiting for OAuth backend"
+        lastSync: "Waiting for OAuth backend",
+        followers: 0,
+        previousFollowers: 0
       });
     }
     saveState();
@@ -2117,7 +2174,7 @@ document.querySelector("#property-form").addEventListener("submit", (event) => {
     agent: document.querySelector("#new-property-agent").value,
     status: "Available",
     ownerId: state.owners[0]?.id || 1,
-    commission: { type: "percentage", value: 2.5 },
+    commission: { type: "percentage", value: defaultCommissionPercent },
     lastPosted: shift(-7),
     nextRepost: shift(0),
     platforms: ["Facebook", "Instagram", "TikTok"],
@@ -2180,7 +2237,9 @@ document.querySelector("#social-account-form").addEventListener("submit", (event
     platform: document.querySelector("#social-account-platform").value,
     name: document.querySelector("#social-account-name").value.trim() || "@account",
     status: "Manual tracking",
-    lastSync: "Not connected"
+    lastSync: "Not connected",
+    followers: Number(document.querySelector("#social-account-followers").value) || 0,
+    previousFollowers: Number(document.querySelector("#social-account-previous-followers").value) || 0
   });
   saveState();
   event.target.reset();
@@ -2231,6 +2290,20 @@ document.addEventListener("submit", (event) => {
     post.status = "Published";
     saveState();
     showToast("Social metrics saved");
+    render();
+  }
+
+  const socialAccountMetricsForm = event.target.closest("[data-social-account-metrics]");
+  if (socialAccountMetricsForm) {
+    event.preventDefault();
+    const account = state.socialAccounts.find((item) => item.id === Number(socialAccountMetricsForm.dataset.socialAccountMetrics));
+    if (!account) return;
+    const formData = new FormData(socialAccountMetricsForm);
+    account.followers = Number(formData.get("followers")) || 0;
+    account.previousFollowers = Number(formData.get("previousFollowers")) || 0;
+    account.lastSync = iso(today);
+    saveState();
+    showToast("Account numbers saved");
     render();
   }
 

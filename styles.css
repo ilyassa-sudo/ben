@@ -607,7 +607,7 @@ label {
 
 .social-account-form {
   display: grid;
-  grid-template-columns: 160px 1fr auto;
+  grid-template-columns: 150px 1fr 150px 150px auto;
   gap: 10px;
   align-items: end;
   margin: 12px 0;
@@ -622,7 +622,7 @@ label {
 
 .account-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 10px;
 }
 
@@ -640,6 +640,15 @@ label {
   border-radius: 8px;
   padding: 12px;
   background: #fbfaf7;
+}
+
+.social-account-card {
+  display: grid;
+}
+
+.account-stats {
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 10px;
 }
 
 .social-card-head {
@@ -710,7 +719,8 @@ label {
   font-size: 1rem;
 }
 
-.social-metrics-form {
+.social-metrics-form,
+.social-account-metrics-form {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
@@ -1070,6 +1080,7 @@ label {
   .social-form,
   .social-account-form,
   .social-metrics-form,
+  .social-account-metrics-form,
   .social-stats,
   .compact-form {
     grid-template-columns: 1fr;

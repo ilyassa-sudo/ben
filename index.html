@@ -287,6 +287,14 @@
                 Account
                 <input id="social-account-name" placeholder="@benabellarealty" />
               </label>
+              <label>
+                Followers Now
+                <input id="social-account-followers" type="number" min="0" placeholder="0" />
+              </label>
+              <label>
+                Followers Last Week
+                <input id="social-account-previous-followers" type="number" min="0" placeholder="0" />
+              </label>
               <button class="ghost-action" type="submit">Save Account</button>
             </form>
             <div class="connect-buttons">
@@ -473,7 +481,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260530-firebase-key-fix"></script>
-    <script src="app.js?v=20260530-firebase-key-fix"></script>
+    <script src="firebase-config.js?v=20260530-social-tracker"></script>
+    <script src="app.js?v=20260530-social-tracker"></script>
   </body>
 </html>
